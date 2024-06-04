@@ -162,6 +162,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     ) internal view returns (bool) {
         bytes32 messageHash = keccak256(
             abi.encodePacked(
+                SIGNATURE_TYPEHASH,
                 _from,
                 _to,
                 _expirationTime,
