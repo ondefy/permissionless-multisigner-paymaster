@@ -5,20 +5,18 @@ library Errors {
                               PAYMASTER
     //////////////////////////////////////////////////////////////*/
 
-    error NotFromBootloader();
-    error ShortPaymasterInput();
-    error UnsupportedPaymasterFlow();
-    error TransactionExpired();
-    error InvalidNonce();
-    error InvalidSignature();
-    error InsufficientBalance();
-    error InvalidAddress();
-    error FailedTransferToBootloader();
-    error FailedTransfer();
-
-    error SignerNotRegistered();
-    error SignerAlreadyRegistered();
-
-    error InvalidManager();
+    error PM_NotFromBootloader();
+    error PM_ShortPaymasterInput();
+    error PM_UnsupportedPaymasterFlow();
+    error PM_TransactionExpired();
+    error PM_InvalidNonce();
+    error PM_InvalidSignature();
+    error PM_InsufficientBalance();
+    error PM_InvalidAddress();
+    error PM_FailedTransferToBootloader();
+    error PM_FailedTransfer();
+    error PM_SignerNotRegistered();
+    error PM_SignerAlreadyRegistered();
+    error PM_InvalidManager();
 
 }

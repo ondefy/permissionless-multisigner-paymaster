@@ -43,7 +43,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
 
     modifier onlyBootloader() {
         if (msg.sender != BOOTLOADER_FORMAL_ADDRESS) {
-            revert Errors.NotFromBootloader();
+            revert Errors.PM_NotFromBootloader();
         }
         // Continue execution if called from the bootloader.
         _;
@@ -75,7 +75,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         // By default we consider the transaction as accepted.
         magic = PAYMASTER_VALIDATION_SUCCESS_MAGIC;
         if (_transaction.paymasterInput.length < 4)
-            revert Errors.ShortPaymasterInput();
+            revert Errors.PM_ShortPaymasterInput();
 
         bytes4 paymasterInputSelector = bytes4(
             _transaction.paymasterInput[0:4]
@@ -95,10 +95,10 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
             ) = abi.decode(innerInputs,(uint, uint, address, bytes));
 
             if(block.timestamp > expirationTime )
-                revert Errors.TransactionExpired();
+                revert Errors.PM_TransactionExpired();
             
             if(_transaction.nonce > maxNonce)
-                revert Errors.InvalidNonce();
+                revert Errors.PM_InvalidNonce();
 
             address userAddress = address(uint160(_transaction.from));
             if (
@@ -113,17 +113,17 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
                 _transaction.gasLimit
             )
             ) {
-                revert Errors.InvalidSignature();
+                revert Errors.PM_InvalidSignature();
             }
             uint256 requiredETH = _transaction.gasLimit *
                 _transaction.maxFeePerGas;
 
             address _protocolManager = protocolManagers[signerAddress];
             if(_protocolManager == address(0))
-                revert Errors.SignerNotRegistered();
+                revert Errors.PM_SignerNotRegistered();
             uint _balance = protocolBalances[_protocolManager];
             if(_balance < requiredETH)
-                revert Errors.InsufficientBalance();
+                revert Errors.PM_InsufficientBalance();
             protocolBalances[_protocolManager] = _balance - requiredETH;
             previousProtocol = _protocolManager;
             previousTotalBalance = address(this).balance - requiredETH;
@@ -136,7 +136,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
                 "Failed to transfer tx fee to the Bootloader. Paymaster balance might not be enough."
             );
         } else {
-            revert Errors.UnsupportedPaymasterFlow();
+            revert Errors.PM_UnsupportedPaymasterFlow();
         }
     }
 
@@ -172,12 +172,10 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
             )
         );
 
-        bytes32 ethSignedMessageHash = ECDSA.toEthSignedMessageHash(
-            messageHash
-        );
+        bytes32 ethSignedMessageHash = _hashTypedDataV4(messageHash);
 
-        (address recoveredAddress, ECDSA.RecoverError error2) = ECDSA
-            .tryRecover(ethSignedMessageHash, _signature);
+        (address recoveredAddress, ECDSA.RecoverError error2) = ethSignedMessageHash
+            .tryRecover(_signature);
         if (error2 != ECDSA.RecoverError.NoError) {
             return false;
         }
@@ -185,18 +183,18 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     }
    function addSigner(address _signer) public {
         if(_signer == address(0))
-            revert Errors.InvalidAddress();
+            revert Errors.PM_InvalidAddress();
         if(protocolManagers[_signer] != address(0))
-            revert Errors.SignerAlreadyRegistered();
+            revert Errors.PM_SignerAlreadyRegistered();
         protocolManagers[_signer] = msg.sender;
         emit SignerAdded(msg.sender, _signer);
    }
 
     function removeSigner(address _signer) public {
         if(_signer == address(0))
-            revert Errors.InvalidAddress();
+            revert Errors.PM_InvalidAddress();
         if(protocolManagers[_signer] != msg.sender)
-            revert Errors.InvalidManager();
+            revert Errors.PM_InvalidManager();
         protocolManagers[_signer] = address(0);
         emit SignerRemoved(msg.sender, _signer);
     }
@@ -205,9 +203,9 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         uint i;
         for(; i< _signers.length; ){
             if(_signers[i] == address(0))
-                revert Errors.InvalidAddress();
+                revert Errors.PM_InvalidAddress();
             if(protocolManagers[_signers[i]] != address(0))
-                revert Errors.SignerAlreadyRegistered();
+                revert Errors.PM_SignerAlreadyRegistered();
             protocolManagers[_signers[i]] = msg.sender;            
             ++i;
             emit SignerAdded(msg.sender, _signers[i]);
@@ -219,9 +217,9 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         uint i;
         for(;i < _signers.length;){
             if(_signers[i] == address(0))
-                revert Errors.InvalidAddress();
+                revert Errors.PM_InvalidAddress();
             if(protocolManagers[_signers[i]] != msg.sender)
-                revert Errors.InvalidManager();
+                revert Errors.PM_InvalidManager();
             protocolManagers[_signers[i]] = address(0);
             ++i;
             emit SignerRemoved(msg.sender, _signers[i]);
@@ -235,9 +233,9 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     function depositWithSigner(address _signer) public payable{
         updateRefund(msg.value, false);
         if(_signer == address(0))
-            revert Errors.InvalidAddress();
+            revert Errors.PM_InvalidAddress();
         if(protocolManagers[_signer] != address(0))
-            revert Errors.SignerAlreadyRegistered();
+            revert Errors.PM_SignerAlreadyRegistered();
         protocolBalances[msg.sender] += msg.value;
         protocolManagers[_signer] = msg.sender;
         emit Deposit(msg.sender, msg.value);
@@ -246,7 +244,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     function depositOnBehalf(address _protocolManager) public payable{
         updateRefund(msg.value, false);
         if(_protocolManager == address(0))
-            revert Errors.InvalidAddress();
+            revert Errors.PM_InvalidAddress();
         protocolBalances[_protocolManager] += msg.value;
         emit Deposit(_protocolManager, msg.value);
     }
@@ -261,7 +259,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     // In a scenario, where previousProtocol is msg.sender. 
     // withdrawFull function is called through paymaster. 
     // In that scenario, some refunds still remain. 
-
+    
     function withdrawFull() public {
         uint balance = protocolBalances[msg.sender];
         updateRefund(balance, true);
@@ -274,9 +272,12 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     function rescueTokens(address[] memory tokens) public{
         uint i;
         for(;i<tokens.length;){
-            if(tokens[i] == address(ETH_TOKEN_SYSTEM_CONTRACT))
-                revert Errors.InvalidAddress();
+            if(tokens[i] == address(ETH_TOKEN_SYSTEM_CONTRACT) || tokens[i] == address(0))
+                revert Errors.PM_InvalidAddress();
             IERC20(tokens[i]).safeTransfer(ZYFI_RESCUE_ADDRESS, IERC20(tokens[i]).balanceOf(address(this)));
         }
+    }
+    function domainSeparator() public view returns(bytes32) {
+        return _domainSeparatorV4();
     }
 }
