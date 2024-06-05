@@ -198,6 +198,17 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         protocolManagers[_signer] = address(0);
         emit SignerRemoved(msg.sender, _signer);
     }
+    function replaceSigner(address _oldSigner, address _newSigner) public {
+        if(_newSigner == address(0) || _oldSigner == address(0))
+            revert Errors.PM_InvalidAddress();
+        if(protocolManagers[_newSigner] != address(0))
+            revert Errors.PM_SignerAlreadyRegistered();
+        if(protocolManagers[_oldSigner] != msg.sender)
+            revert Errors.PM_InvalidManager();
+        protocolManagers[_newSigner] = msg.sender;
+        protocolManagers[_oldSigner] = address(0);
+   }
+
 
     function batchAddSigners(address[] memory _signers) public{
         uint i;
