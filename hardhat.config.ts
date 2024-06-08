@@ -1,5 +1,9 @@
 import { HardhatUserConfig } from "hardhat/config";
-
+import "@matterlabs/hardhat-zksync-deploy";
+import "@matterlabs/hardhat-zksync-node";
+import "@matterlabs/hardhat-zksync-solc";
+import "@matterlabs/hardhat-zksync-verify";
+import "@matterlabs/hardhat-zksync-chai-matchers";
 import "@matterlabs/hardhat-zksync";
 
 const config: HardhatUserConfig = {
@@ -46,6 +50,12 @@ const config: HardhatUserConfig = {
   },
   solidity: {
     version: "0.8.19",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
+      },
+    },
   },
 };
 
