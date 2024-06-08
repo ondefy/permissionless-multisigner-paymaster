@@ -23,11 +23,11 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     "PermissionLessPaymaster(address userAddress,uint256 lastTimestamp,uint256 nonces)"
     );
 
-    mapping(address signer => address protocolManager) public protocolManagers;
+    mapping(address signer => address manager) public managers;
     
-    mapping(address protocolManager => uint ethBalance) public protocolBalances; 
+    mapping(address manager => uint ethBalance) public managerBalances; 
 
-    address public previousProtocol;
+    address public previousManager;
     uint public previousTotalBalance; 
     uint public totalBalance; 
 
@@ -49,9 +49,9 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         _;
     }
     function updateRefund(uint amount, bool isWithdraw) internal {
-        if(previousProtocol != address(0)){
-            protocolBalances[previousProtocol] = protocolBalances[previousProtocol] + (address(this).balance - previousTotalBalance);
-            previousProtocol = address(0);
+        if(previousManager != address(0)){
+            managerBalances[previousManager] = managerBalances[previousManager] + (address(this).balance - previousTotalBalance);
+            previousManager = address(0);
             if(isWithdraw){
                 previousTotalBalance = address(this).balance - amount;
             }
@@ -106,7 +106,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
                 signature,
                 signerAddress,
                 userAddress,
-                address(uint160(_transaction.to)),
+                address(uint160(_transaction.to)), 
                 expirationTime,
                 maxNonce,
                 _transaction.maxFeePerGas,
@@ -118,14 +118,14 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
             uint256 requiredETH = _transaction.gasLimit *
                 _transaction.maxFeePerGas;
 
-            address _protocolManager = protocolManagers[signerAddress];
-            if(_protocolManager == address(0))
+            address _manager = managers[signerAddress];
+            if(_manager == address(0))
                 revert Errors.PM_SignerNotRegistered();
-            uint _balance = protocolBalances[_protocolManager];
+            uint _balance = managerBalances[_manager];
             if(_balance < requiredETH)
                 revert Errors.PM_InsufficientBalance();
-            protocolBalances[_protocolManager] = _balance - requiredETH;
-            previousProtocol = _protocolManager;
+            managerBalances[_manager] = _balance - requiredETH;
+            previousManager = _manager;
             previousTotalBalance = address(this).balance - requiredETH;
             // The bootloader never returns any data, so it can safely be ignored here.
             (bool success, ) = payable(BOOTLOADER_FORMAL_ADDRESS).call{
@@ -174,8 +174,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
 
         bytes32 ethSignedMessageHash = _hashTypedDataV4(messageHash);
 
-        (address recoveredAddress, ECDSA.RecoverError error2) = ethSignedMessageHash
-            .tryRecover(_signature);
+        (address recoveredAddress, ECDSA.RecoverError error2) = ethSignedMessageHash.tryRecover(_signature);
         if (error2 != ECDSA.RecoverError.NoError) {
             return false;
         }
@@ -184,30 +183,30 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
    function addSigner(address _signer) public {
         if(_signer == address(0))
             revert Errors.PM_InvalidAddress();
-        if(protocolManagers[_signer] != address(0))
+        if(managers[_signer] != address(0))
             revert Errors.PM_SignerAlreadyRegistered();
-        protocolManagers[_signer] = msg.sender;
+        managers[_signer] = msg.sender;
         emit SignerAdded(msg.sender, _signer);
    }
 
     function removeSigner(address _signer) public {
         if(_signer == address(0))
             revert Errors.PM_InvalidAddress();
-        if(protocolManagers[_signer] != msg.sender)
+        if(managers[_signer] != msg.sender)
             revert Errors.PM_UnauthorizedManager();
-        protocolManagers[_signer] = address(0);
+        managers[_signer] = address(0);
         emit SignerRemoved(msg.sender, _signer);
     }
     function replaceSigner(address _oldSigner, address _newSigner) public {
         if(_newSigner == address(0) || _oldSigner == address(0))
             revert Errors.PM_InvalidAddress();
-        if(protocolManagers[_newSigner] != address(0))
+        if(managers[_newSigner] != address(0))
             revert Errors.PM_SignerAlreadyRegistered();
-        if(protocolManagers[_oldSigner] != msg.sender)
+        if(managers[_oldSigner] != msg.sender)
             revert Errors.PM_UnauthorizedManager();
-        protocolManagers[_newSigner] = msg.sender;
-        protocolManagers[_oldSigner] = address(0);
-   }
+        managers[_newSigner] = msg.sender;
+        managers[_oldSigner] = address(0);
+    }
 
 
     function batchAddSigners(address[] memory _signers) public{
@@ -215,9 +214,9 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         for(; i< _signers.length; ){
             if(_signers[i] == address(0))
                 revert Errors.PM_InvalidAddress();
-            if(protocolManagers[_signers[i]] != address(0))
+            if(managers[_signers[i]] != address(0))
                 revert Errors.PM_SignerAlreadyRegistered();
-            protocolManagers[_signers[i]] = msg.sender;            
+            managers[_signers[i]] = msg.sender;            
             ++i;
             emit SignerAdded(msg.sender, _signers[i]);
 
@@ -229,52 +228,52 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         for(;i < _signers.length;){
             if(_signers[i] == address(0))
                 revert Errors.PM_InvalidAddress();
-            if(protocolManagers[_signers[i]] != msg.sender)
+            if(managers[_signers[i]] != msg.sender)
                 revert Errors.PM_UnauthorizedManager();
-            protocolManagers[_signers[i]] = address(0);
+            managers[_signers[i]] = address(0);
             ++i;
             emit SignerRemoved(msg.sender, _signers[i]);
         }
     }
     function deposit() public payable {
         updateRefund(msg.value, false);
-        protocolBalances[msg.sender] += msg.value;
+        managerBalances[msg.sender] += msg.value;
         emit Deposit(msg.sender, msg.value);
     }
-    function depositWithSigner(address _signer) public payable{
+    function depositAndAddSigner(address _signer) public payable{
         updateRefund(msg.value, false);
         if(_signer == address(0))
             revert Errors.PM_InvalidAddress();
-        if(protocolManagers[_signer] != address(0))
+        if(managers[_signer] != address(0))
             revert Errors.PM_SignerAlreadyRegistered();
-        protocolBalances[msg.sender] += msg.value;
-        protocolManagers[_signer] = msg.sender;
+        managerBalances[msg.sender] += msg.value;
+        managers[_signer] = msg.sender;
         emit Deposit(msg.sender, msg.value);
         emit SignerAdded(msg.sender, _signer);
     }
-    function depositOnBehalf(address _protocolManager) public payable{
+    function depositOnBehalf(address _manager) public payable{
         updateRefund(msg.value, false);
-        if(_protocolManager == address(0))
+        if(_manager == address(0))
             revert Errors.PM_InvalidAddress();
-        protocolBalances[_protocolManager] += msg.value;
-        emit Deposit(_protocolManager, msg.value);
+        managerBalances[_manager] += msg.value;
+        emit Deposit(_manager, msg.value);
     }
     function withdraw(uint amount) public {
         updateRefund(amount, true);        
-        protocolBalances[msg.sender] -= amount;
+        managerBalances[msg.sender] -= amount;
         (bool success, ) = payable(msg.sender).call{value: amount}("");
         require(success, "Failed to withdraw funds from paymaster.");
         emit Withdraw(msg.sender, amount);
     }
     /// @dev refund is still possible in a edge case scenario. 
-    // In a scenario, where previousProtocol is msg.sender. 
+    // In a scenario, where previous manager is msg.sender. 
     // withdrawFull function is called through paymaster. 
     // In that scenario, some refunds still remain. 
     
     function withdrawFull() public {
-        uint balance = protocolBalances[msg.sender];
+        uint balance = managerBalances[msg.sender];
         updateRefund(balance, true);
-        protocolBalances[msg.sender] -= balance; 
+        managerBalances[msg.sender] -= balance; 
         (bool success, ) = payable(msg.sender).call{value: balance}("");
         require(success, "Failed to withdraw funds from paymaster.");
         emit Withdraw(msg.sender, balance);

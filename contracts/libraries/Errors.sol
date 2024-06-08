@@ -18,5 +18,5 @@ library Errors {
     error PM_SignerNotRegistered();
     error PM_SignerAlreadyRegistered();
     error PM_UnauthorizedManager();
-
+    error PM_Unauthorized();
 }
