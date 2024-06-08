@@ -194,7 +194,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         if(_signer == address(0))
             revert Errors.PM_InvalidAddress();
         if(protocolManagers[_signer] != msg.sender)
-            revert Errors.PM_InvalidManager();
+            revert Errors.PM_UnauthorizedManager();
         protocolManagers[_signer] = address(0);
         emit SignerRemoved(msg.sender, _signer);
     }
@@ -204,7 +204,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         if(protocolManagers[_newSigner] != address(0))
             revert Errors.PM_SignerAlreadyRegistered();
         if(protocolManagers[_oldSigner] != msg.sender)
-            revert Errors.PM_InvalidManager();
+            revert Errors.PM_UnauthorizedManager();
         protocolManagers[_newSigner] = msg.sender;
         protocolManagers[_oldSigner] = address(0);
    }
@@ -230,7 +230,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
             if(_signers[i] == address(0))
                 revert Errors.PM_InvalidAddress();
             if(protocolManagers[_signers[i]] != msg.sender)
-                revert Errors.PM_InvalidManager();
+                revert Errors.PM_UnauthorizedManager();
             protocolManagers[_signers[i]] = address(0);
             ++i;
             emit SignerRemoved(msg.sender, _signers[i]);

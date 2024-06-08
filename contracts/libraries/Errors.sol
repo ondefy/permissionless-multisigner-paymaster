@@ -17,6 +17,6 @@ library Errors {
     error PM_FailedTransfer();
     error PM_SignerNotRegistered();
     error PM_SignerAlreadyRegistered();
-    error PM_InvalidManager();
+    error PM_UnauthorizedManager();
 
 }
