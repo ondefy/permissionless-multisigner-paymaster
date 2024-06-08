@@ -18,7 +18,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
 
-    address public immutable ZYFI_RESCUE_ADDRESS; 
+    address public ZYFI_RESCUE_ADDRESS; 
     bytes32 public constant SIGNATURE_TYPEHASH = keccak256(
     "PermissionLessPaymaster(address userAddress,uint256 lastTimestamp,uint256 nonces)"
     );
@@ -208,7 +208,9 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         managers[_oldSigner] = address(0);
     }
 
-
+    function selfRevokeSigner() public{
+        managers[msg.sender] = address(0);
+    }
     function batchAddSigners(address[] memory _signers) public{
         uint i;
         for(; i< _signers.length; ){
@@ -279,6 +281,24 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         emit Withdraw(msg.sender, balance);
     }
 
+    function withdrawAndRemoveSigners(uint amount, address[] memory _signers) public{
+        updateRefund(amount, true);
+        managerBalances[msg.sender] -= amount;
+        uint i;
+        for(; i< _signers.length;){
+            if(_signers[i] == address(0))
+                revert Errors.PM_InvalidAddress();
+            if(managers[_signers[i]] != msg.sender)
+                revert Errors.PM_UnauthorizedManager();
+            managers[_signers[i]] = address(0);
+            ++i;
+            emit SignerRemoved(msg.sender, _signers[i]);
+        }
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        require(success, "Failed to withdraw funds from paymaster.");
+        emit Withdraw(msg.sender, amount);
+    }
+
     function rescueTokens(address[] memory tokens) public{
         uint i;
         for(;i<tokens.length;){
@@ -289,5 +309,16 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     }
     function domainSeparator() public view returns(bytes32) {
         return _domainSeparatorV4();
+    }
+    function updateRescueAddress(address _newAddress) public {
+        if(msg.sender != ZYFI_RESCUE_ADDRESS)
+            revert Errors.PM_Unauthorized();
+        if(_newAddress == address(0))
+            revert Errors.PM_InvalidAddress();
+        ZYFI_RESCUE_ADDRESS = _newAddress;
+    }
+
+    function getManagerBalance_via_Signer(address _signer) public view returns(uint){
+        return managerBalances[managers[_signer]];
     }
 }
