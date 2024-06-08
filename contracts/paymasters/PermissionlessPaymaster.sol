@@ -264,7 +264,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         updateRefund(amount, true);        
         managerBalances[msg.sender] -= amount;
         (bool success, ) = payable(msg.sender).call{value: amount}("");
-        require(success, "Failed to withdraw funds from paymaster.");
+        if(!success) revert Errors.PM_FailedTransfer();
         emit Withdraw(msg.sender, amount);
     }
     /// @dev refund is still possible in a edge case scenario. 
@@ -277,7 +277,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         updateRefund(balance, true);
         managerBalances[msg.sender] -= balance; 
         (bool success, ) = payable(msg.sender).call{value: balance}("");
-        require(success, "Failed to withdraw funds from paymaster.");
+        if(!success) revert Errors.PM_FailedTransfer();
         emit Withdraw(msg.sender, balance);
     }
 
@@ -295,7 +295,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
             emit SignerRemoved(msg.sender, _signers[i]);
         }
         (bool success, ) = payable(msg.sender).call{value: amount}("");
-        require(success, "Failed to withdraw funds from paymaster.");
+        if(!success) revert Errors.PM_FailedTransfer();
         emit Withdraw(msg.sender, amount);
     }
 
