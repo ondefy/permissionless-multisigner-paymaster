@@ -97,7 +97,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
             ) = abi.decode(innerInputs,(uint, uint, address, bytes));
 
             if(block.timestamp > expirationTime )
-                revert Errors.PM_TransactionExpired();
+                revert Errors.PM_SignatureExpired();
             
             if(_transaction.nonce > maxNonce)
                 revert Errors.PM_InvalidNonce();
