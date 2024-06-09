@@ -31,10 +31,12 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     uint public previousTotalBalance; 
     uint public totalBalance; 
 
-    event SignerAdded(address indexed protocolManager, address indexed signer);
-    event SignerRemoved(address indexed protocolManager, address indexed signer);
-    event Deposit(address indexed protocolManager, uint amount);
-    event Withdraw(address indexed protocolManager, uint amount); 
+    event SignerAdded(address indexed manager, address indexed signer);
+    event SignerRemoved(address indexed manager, address indexed signer);
+    event SignerRevoked(address indexed manager, address indexed signer);
+    event Deposit(address indexed manager, uint amount);
+    event Withdraw(address indexed manager, uint amount);
+    event Sponsor(address indexed manager, address indexed signer, uint gas);
 
     constructor(address zyfi_address) EIP712("PermissionLessPaymaster","1.0") {
         require(zyfi_address != address(0), "Address cannot be zero");
@@ -127,6 +129,8 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
             managerBalances[_manager] = _balance - requiredETH;
             previousManager = _manager;
             previousTotalBalance = address(this).balance - requiredETH;
+
+            emit Sponsor(_manager, signerAddress, requiredETH);
             // The bootloader never returns any data, so it can safely be ignored here.
             (bool success, ) = payable(BOOTLOADER_FORMAL_ADDRESS).call{
                 value: requiredETH
@@ -209,7 +213,9 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     }
 
     function selfRevokeSigner() public{
+        previousManager = managers[msg.sender];
         managers[msg.sender] = address(0);
+        emit SignerRevoked(previousManager, msg.sender);
     }
     function batchAddSigners(address[] memory _signers) public{
         uint i;
