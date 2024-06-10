@@ -135,11 +135,10 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
             (bool success, ) = payable(BOOTLOADER_FORMAL_ADDRESS).call{
                 value: requiredETH
             }("");
-            require(
-                success,
-                "Failed to transfer tx fee to the Bootloader. Paymaster balance might not be enough."
-            );
-        } else {
+            if(!success) 
+                revert Errors.PM_FailedTransfer();
+        } 
+        else {
             revert Errors.PM_UnsupportedPaymasterFlow();
         }
     }
