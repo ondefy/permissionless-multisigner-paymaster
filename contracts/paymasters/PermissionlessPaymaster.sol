@@ -20,12 +20,12 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
 
     address public ZYFI_RESCUE_ADDRESS; 
     bytes32 public constant SIGNATURE_TYPEHASH = keccak256(
-    "PermissionLessPaymaster(address userAddress,uint256 lastTimestamp,uint256 nonces)"
+    "PermissionLessPaymaster(address from, address to, uint256 expirationTime, uint256 maxNonce, uint256 maxFeePerGas, uint256 gasLimit)"
     );
 
     mapping(address signer => address manager) public managers;
     
-    mapping(address manager => uint ethBalance) public managerBalances; 
+    mapping(address manager => uint ethBalance) public managerBalances;
 
     address public previousManager;
     uint public previousTotalBalance; 
