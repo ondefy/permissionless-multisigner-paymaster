@@ -20,7 +20,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
 
     address public ZYFI_RESCUE_ADDRESS; 
     bytes32 public constant SIGNATURE_TYPEHASH = keccak256(
-    "PermissionLessPaymaster(address from, address to, uint256 expirationTime, uint256 maxNonce, uint256 maxFeePerGas, uint256 gasLimit)"
+    "PermissionLessPaymaster(address from,address to,uint256 expirationTime,uint256 maxNonce,uint256 maxFeePerGas,uint256 gasLimit)"
     );
 
     mapping(address signer => address manager) public managers;
@@ -165,7 +165,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         uint256 _gasLimit
     ) internal view returns (bool) {
         bytes32 messageHash = keccak256(
-            abi.encodePacked(
+            abi.encode(
                 SIGNATURE_TYPEHASH,
                 _from,
                 _to,
