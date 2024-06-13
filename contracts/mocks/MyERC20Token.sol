@@ -24,4 +24,7 @@ contract MyERC20Token is ERC20Burnable {
     }
 
     // Additional functions or overrides can be added here if needed.
+    function mint(address to, uint amount) public {
+        _mint(to, amount);
+    }
 }
