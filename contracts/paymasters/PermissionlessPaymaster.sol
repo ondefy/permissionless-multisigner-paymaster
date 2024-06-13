@@ -12,7 +12,6 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 import {Errors} from "../libraries/Errors.sol";
-import 'hardhat/console.sol';
 contract PermissionlessPaymaster is IPaymaster, EIP712 {
 
     using ECDSA for bytes32;

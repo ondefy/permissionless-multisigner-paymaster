@@ -8,6 +8,9 @@ import "@matterlabs/hardhat-zksync";
 //import "hardhat-gas-reporter"
 
 const config: HardhatUserConfig = {
+  mocha: {
+    timeout: 100000000
+  },
   defaultNetwork: "zkSyncSepoliaTestnet",
   networks: {
     zkSyncSepoliaTestnet: {
