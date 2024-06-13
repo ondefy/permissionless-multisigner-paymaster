@@ -308,12 +308,15 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         emit Withdraw(msg.sender, amount);
     }
 
-    function rescueTokens(address[] memory tokens) public{
-        uint i;
-        for(;i<tokens.length;){
-            if(tokens[i] == address(ETH_TOKEN_SYSTEM_CONTRACT) || tokens[i] == address(0))
+    function rescueTokens(address[] memory _tokens) public{
+        uint length = _tokens.length;
+        for(uint i = 0; i < length; ){
+            if(_tokens[i] == address(ETH_TOKEN_SYSTEM_CONTRACT) || _tokens[i] == address(0))
                 revert Errors.PM_InvalidAddress();
-            IERC20(tokens[i]).safeTransfer(ZYFI_RESCUE_ADDRESS, IERC20(tokens[i]).balanceOf(address(this)));
+            IERC20(_tokens[i]).safeTransfer(ZYFI_RESCUE_ADDRESS, IERC20(_tokens[i]).balanceOf(address(this)));
+            unchecked {
+                ++i;
+            }
         }
     }
     function domainSeparator() public view returns(bytes32) {
