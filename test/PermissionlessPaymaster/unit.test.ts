@@ -450,7 +450,10 @@ describe("PermissionlessPaymaster", () => {
         it("Should rescue dropped token", async () => {
             await erc20.connect(Manager1).transfer(paymaster.address,5);
             expect(await erc20.balanceOf(paymaster.address)).to.be.equal(5);
-            await expect(paymaster.connect(Manager2).rescueTokens([erc20.address, ZERO_ADDRESS])).to.be.revertedWith("0x02876945");
+            await expect(paymaster.connect(Manager2).rescueTokens([erc20.address, ZERO_ADDRESS])).to.be.rejectedWith("0x02876945");
+            await expect(paymaster.connect(Manager2).rescueTokens([erc20.address, Manager1.address])).to.be.rejected;
+            await expect(paymaster.connect(Manager2).rescueTokens([erc20.address])).not.to.be.rejected;
+            expect(await erc20.balanceOf(await paymaster.ZYFI_RESCUE_ADDRESS())).to.be.equal(5);
         });
     });
 });
