@@ -12,7 +12,7 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 import {Errors} from "../libraries/Errors.sol";
-
+import 'hardhat/console.sol';
 contract PermissionlessPaymaster is IPaymaster, EIP712 {
 
     using ECDSA for bytes32;
@@ -217,29 +217,32 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         emit SignerRevoked(previousManager, msg.sender);
     }
     function batchAddSigners(address[] memory _signers) public{
-        uint i;
-        for(; i< _signers.length; ){
+        uint length = _signers.length;
+        for(uint i = 0; i < length; ){
             if(_signers[i] == address(0))
                 revert Errors.PM_InvalidAddress();
             if(managers[_signers[i]] != address(0))
                 revert Errors.PM_SignerAlreadyRegistered();
-            managers[_signers[i]] = msg.sender;            
-            ++i;
+            managers[_signers[i]] = msg.sender;
             emit SignerAdded(msg.sender, _signers[i]);
-
+            unchecked{
+                ++i;
+            }        
         }
     }
 
     function batchRemoveSigners(address[] memory _signers) public{
-        uint i;
-        for(;i < _signers.length;){
+        uint length = _signers.length;
+        for(uint i = 0; i < length; ){
             if(_signers[i] == address(0))
                 revert Errors.PM_InvalidAddress();
             if(managers[_signers[i]] != msg.sender)
                 revert Errors.PM_UnauthorizedManager();
             managers[_signers[i]] = address(0);
-            ++i;
             emit SignerRemoved(msg.sender, _signers[i]);
+            unchecked{
+                ++i;
+            }
         }
     }
     function deposit() public payable {
@@ -289,15 +292,17 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     function withdrawAndRemoveSigners(uint amount, address[] memory _signers) public{
         updateRefund(amount, true);
         managerBalances[msg.sender] -= amount;
-        uint i;
-        for(; i< _signers.length;){
+        uint length = _signers.length;
+        for(uint i = 0; i< length; ){
             if(_signers[i] == address(0))
                 revert Errors.PM_InvalidAddress();
             if(managers[_signers[i]] != msg.sender)
                 revert Errors.PM_UnauthorizedManager();
             managers[_signers[i]] = address(0);
-            ++i;
             emit SignerRemoved(msg.sender, _signers[i]);
+            unchecked {
+                ++i;
+            }
         }
         (bool success, ) = payable(msg.sender).call{value: amount}("");
         if(!success) revert Errors.PM_FailedTransfer();
