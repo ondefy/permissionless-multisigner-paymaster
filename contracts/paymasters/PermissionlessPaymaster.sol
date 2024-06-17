@@ -12,6 +12,7 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 import {Errors} from "../libraries/Errors.sol";
+
 contract PermissionlessPaymaster is IPaymaster, EIP712 {
 
     using ECDSA for bytes32;
@@ -50,15 +51,18 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         _;
     }
     function updateRefund(uint amount, bool isWithdraw) internal {
-        if(previousManager != address(0)){
-            managerBalances[previousManager] = managerBalances[previousManager] + (address(this).balance - previousTotalBalance);
-            previousManager = address(0);
-            if(isWithdraw){
-                previousTotalBalance = address(this).balance - amount;
-            }
-            else{
-                previousTotalBalance = address(this).balance + amount;
-            }
+        uint _previousTotalBalance = previousTotalBalance;
+        if(!isWithdraw){
+            _previousTotalBalance += amount;
+        }
+        if(address(this).balance != _previousTotalBalance){
+            managerBalances[previousManager] = managerBalances[previousManager] + (address(this).balance - _previousTotalBalance);
+        }
+        if(isWithdraw){
+            previousTotalBalance = address(this).balance - amount;
+        }
+        else{
+            previousTotalBalance = address(this).balance;
         }
     }
 
@@ -72,7 +76,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         onlyBootloader
         returns (bytes4 magic, bytes memory context)
     {
-        updateRefund(0,false);
+        updateRefund(0,true);
         // By default we consider the transaction as accepted.
         magic = PAYMASTER_VALIDATION_SUCCESS_MAGIC;
         if (_transaction.paymasterInput.length < 4)
@@ -114,7 +118,8 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
                 _transaction.gasLimit
             )
             ) {
-                revert Errors.PM_InvalidSignature();
+                //revert Errors.PM_InvalidSignature();
+                magic = bytes4(0);
             }
             uint256 requiredETH = _transaction.gasLimit *
                 _transaction.maxFeePerGas;
