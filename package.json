@@ -10,7 +10,8 @@
     "interact": "hardhat deploy-zksync --script interact.ts",
     "compile": "hardhat compile",
     "clean": "hardhat clean",
-    "test": "hardhat test --network hardhat"
+    "test": "hardhat test --network hardhat",
+    "test-local": "hardhat test --network inMemoryNode"
   },
   "devDependencies": {
     "@matterlabs/hardhat-zksync": "^0.1.0",

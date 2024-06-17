@@ -17,6 +17,7 @@ import {
 import dotenv from "dotenv";
 import { string } from "hardhat/internal/core/params/argumentTypes";
 import { zeroPad } from "ethers/lib/utils";
+import { DEFAULT_GAS_PER_PUBDATA_LIMIT } from "zksync-ethers/build/utils";
 dotenv.config();
 
 const provider = getProvider();
@@ -51,6 +52,20 @@ describe("PermissionlessPaymaster", () => {
             }
         );
         return paymaster;
+    };
+    const getPaymasterParams = async (paymaster: Contract, from: Wallet, signer: Wallet) => {
+        const gasPrice = await provider.getGasPrice();
+        const sig = await getEIP712Signature(from.address, paymaster.address, BigNumber.from(10000000000000), BigNumber.from(1000), gasPrice, BigNumber.from(10000000), signer, paymaster);
+        const innerInputs = getInnerInputs(BigNumber.from(10000000000000), BigNumber.from(1000), signer.address, sig);
+        const paymasterParams = utils.getPaymasterParams(
+            paymaster.address.toString(),
+            {
+                type: "General",
+                innerInput: innerInputs
+            }
+        );
+        return [paymasterParams, gasPrice];
+
     };
     const initializeWallets = () => {
         if (hre.network.name == "zkSyncTestnet") {
@@ -94,6 +109,7 @@ describe("PermissionlessPaymaster", () => {
             wallet: zyfi_rescue_wallet,
         });
     });
+
     //// -----------------------------------------------
     //// Deposit Functions Test
     //// -----------------------------------------------
@@ -175,12 +191,207 @@ describe("PermissionlessPaymaster", () => {
                     })
             ).to.be.rejectedWith("0x02876945");
         });
+        it("should maintain previousManager & previousTotalBalance initial state", async () => {
+            expect(await paymaster.previousManager()).to.be.eq(ZERO_ADDRESS);
+            expect(await paymaster.previousTotalBalance()).to.be.eq(await provider.getBalance(paymaster.address));
+            expect(await paymaster.managerBalances(ZERO_ADDRESS)).to.be.eq(BigNumber.from(0));
+            await paymaster.connect(Manager2).withdraw(ethers.utils.parseEther("0.1"));
+            expect(await paymaster.previousTotalBalance()).to.be.eq(await provider.getBalance(paymaster.address));
+            expect(await paymaster.previousTotalBalance()).to.be.eq(await provider.getBalance(paymaster.address));
+            expect(await paymaster.managerBalances(ZERO_ADDRESS)).to.be.eq(BigNumber.from(0));
+            // Back to original state
+            await paymaster.connect(Manager2).deposit({ value: ethers.utils.parseEther("0.1") });
+            expect(await paymaster.previousTotalBalance()).to.be.eq(await provider.getBalance(paymaster.address));
+            expect(await paymaster.managerBalances(ZERO_ADDRESS)).to.be.eq(BigNumber.from(0));
+        });
     });
 
     //// -----------------------------------------------
-    //// Paymaster Transaction and Signature Tests
+    //// Update Refunds Test 
     //// -----------------------------------------------
 
+    describe("Update refund Tests", async () => {
+        let previousTotalBalance;
+        let currentPaymasterBalance;
+        let previousPaymasterBalance;
+        let tx: any;
+        let txCost;
+
+        it("should calculate refunds and update balance correctly including deposit and withdraw functions", async () => {
+            // Manager1 uses paymaster
+            previousPaymasterBalance = await provider.getBalance(paymaster.address);
+            let balanceBeforeM1 = await paymaster.managerBalances(Manager1.address);
+            tx = await executeERC20Transaction(erc20, paymaster, user1, signer1);
+            txCost = BigNumber.from(tx.events.at(0).data);
+            const refund1 = BigNumber.from(tx.events.at(-1).data);
+            currentPaymasterBalance = await provider.getBalance(paymaster.address)
+            previousTotalBalance = await paymaster.previousTotalBalance();
+            expect(await paymaster.previousManager()).to.be.eq(Manager1.address);
+            expect(previousTotalBalance).to.be.equal(previousPaymasterBalance.sub(txCost));
+            expect(await paymaster.managerBalances(Manager1.address)).to.be.eq(balanceBeforeM1.sub(txCost));
+            expect(currentPaymasterBalance).to.be.eq(previousPaymasterBalance.sub(txCost).add(refund1));
+            expect(currentPaymasterBalance.sub(previousTotalBalance)).to.be.eq(refund1);
+
+            // Manager2 uses paymaster with 2 signers, Manager1 get refunds. 
+            balanceBeforeM1 = await paymaster.managerBalances(Manager1.address);
+            let balanceBeforeM2 = await paymaster.managerBalances(Manager2.address);
+            previousPaymasterBalance = currentPaymasterBalance;
+            tx = await executeERC20Transaction(erc20, paymaster, user1, signer2);
+            txCost = BigNumber.from(tx.events.at(0).data);
+            const refund2 = BigNumber.from(tx.events.at(-1).data);
+            currentPaymasterBalance = await provider.getBalance(paymaster.address);
+            previousTotalBalance = await paymaster.previousTotalBalance();
+            expect(await paymaster.previousManager()).to.be.equal(Manager2.address);
+            expect(await paymaster.managerBalances(Manager1.address)).to.be.eq(balanceBeforeM1.add(refund1));
+            expect(previousTotalBalance).to.be.equal(previousPaymasterBalance.sub(txCost));
+            expect(await paymaster.managerBalances(Manager2.address)).to.be.eq(balanceBeforeM2.sub(txCost));
+            expect(currentPaymasterBalance).to.be.eq(previousPaymasterBalance.sub(txCost).add(refund2));
+            expect(currentPaymasterBalance.sub(previousTotalBalance)).to.be.eq(refund2);
+
+            // Manager3 deposits/withdraws paymaster and it should update correctly. 
+            balanceBeforeM2 = await paymaster.managerBalances(Manager2.address);
+            let balanceBeforeM3 = await paymaster.managerBalances(Manager3.address);
+            previousPaymasterBalance = currentPaymasterBalance;
+            tx = await paymaster.connect(Manager3).deposit({ value: ethers.utils.parseEther("0.1") });
+            currentPaymasterBalance = await provider.getBalance(paymaster.address);
+            expect(await paymaster.previousManager()).to.be.equal(Manager2.address); // previous manager should not change in deposit
+            expect(await paymaster.managerBalances(Manager2.address)).to.be.eq(balanceBeforeM2.add(refund2));
+            expect(await paymaster.managerBalances(Manager3.address)).to.be.eq(balanceBeforeM3.add(ethers.utils.parseEther("0.1")));
+            // If now paymaster is called it should not update previousManager balance; i.e.manager2 balance
+            previousTotalBalance = await paymaster.previousTotalBalance();
+            balanceBeforeM2 = await paymaster.managerBalances(Manager2.address);
+            tx = await paymaster.connect(Manager3).withdraw(ethers.utils.parseEther("0.1"));
+            expect(await paymaster.managerBalances(Manager2.address)).to.be.eq(balanceBeforeM2);
+            expect(await paymaster.previousTotalBalance()).to.be.equal(previousTotalBalance.sub(ethers.utils.parseEther("0.1")));
+
+            // validate function should not also update the balance of previous manager
+            balanceBeforeM2 = await paymaster.managerBalances(Manager2.address);
+            balanceBeforeM3 = await paymaster.managerBalances(Manager3.address);
+            tx = await executeERC20Transaction(erc20, paymaster, user1, Manager3);
+            txCost = BigNumber.from(tx.events.at(0).data);
+            const refund3 = BigNumber.from(tx.events.at(-1).data);
+            currentPaymasterBalance = await provider.getBalance(paymaster.address);
+            previousTotalBalance = await paymaster.previousTotalBalance();
+            expect(await paymaster.previousManager()).to.be.equal(Manager3.address);
+            expect(await paymaster.managerBalances(Manager2.address)).to.be.eq(balanceBeforeM2);
+            expect(previousTotalBalance).to.be.equal(previousPaymasterBalance.sub(txCost));
+            expect(await paymaster.managerBalances(Manager3.address)).to.be.eq(balanceBeforeM3.sub(txCost));
+            expect(currentPaymasterBalance).to.be.eq(previousPaymasterBalance.sub(txCost).add(refund3));
+            expect(currentPaymasterBalance.sub(previousTotalBalance)).to.be.eq(refund3);
+
+            // Manager 3 refund correctly on withdraw
+            previousTotalBalance = await paymaster.previousTotalBalance();
+            previousPaymasterBalance = currentPaymasterBalance;
+            balanceBeforeM3 = await paymaster.managerBalances(Manager3.address);
+            tx = await paymaster.connect(Manager3).withdraw(ethers.utils.parseEther("0.01"));
+            currentPaymasterBalance = await provider.getBalance(paymaster.address);
+            expect(await paymaster.managerBalances(Manager3.address)).to.be.eq(balanceBeforeM3.sub(ethers.utils.parseEther("0.01")).add(refund3));
+            expect(await paymaster.previousTotalBalance()).to.be.eq(previousTotalBalance.sub(ethers.utils.parseEther("0.01")).add(refund3));
+            expect(currentPaymasterBalance).to.be.eq(previousPaymasterBalance.sub(ethers.utils.parseEther("0.01")));
+            expect(await paymaster.previousTotalBalance()).to.be.eq(currentPaymasterBalance);
+
+        });
+
+        it("should update refunds correctly during deposit and withdraw using paymaster itself", async () => {
+            // There is no refund remaining right now. 
+            previousTotalBalance = await paymaster.previousTotalBalance();
+            currentPaymasterBalance = await provider.getBalance(paymaster.address);
+            expect(previousTotalBalance).to.be.eq(currentPaymasterBalance);
+
+            // Paymaster call 
+            tx = await executeERC20Transaction(erc20, paymaster, user1, signer1);
+            txCost = BigNumber.from(tx.events.at(0).data);
+            const refund1 = BigNumber.from(tx.events.at(-1).data);
+            previousTotalBalance = await paymaster.previousTotalBalance();
+            currentPaymasterBalance = await provider.getBalance(paymaster.address);
+            expect(currentPaymasterBalance.sub(previousTotalBalance)).to.be.eq(refund1);
+            expect(await paymaster.previousManager()).to.be.eq(Manager1.address);
+            // Manager 1 has refund remaining as of now. 
+            // Deposit is being called from paymaster itself. 
+            let beforeBalanceM1 = await paymaster.managerBalances(Manager1.address);
+            let [paymasterParams, gasPrice] = await getPaymasterParams(paymaster, Manager1, signer1);
+            tx = await (await paymaster.connect(Manager1).deposit({
+                value: ethers.utils.parseEther("0.1"),
+                maxPriorityFeePerGas: BigNumber.from(0),
+                maxFeePerGas: gasPrice,
+                gasLimit: 10000000,
+                customData: {
+                    paymasterParams,
+                    gasPerPubdata: utils.DEFAULT_GAS_PER_PUBDATA_LIMIT,
+                }
+            })).wait();
+
+            txCost = BigNumber.from(tx.events.at(0).data);
+            const refund2 = BigNumber.from(tx.events.at(-1).data);
+            currentPaymasterBalance = await provider.getBalance(paymaster.address);
+            expect(await paymaster.managerBalances(Manager1.address)).to.be.eq(beforeBalanceM1.sub(txCost).add(ethers.utils.parseEther("0.1")).add(refund1));
+            expect(await paymaster.previousTotalBalance()).to.be.eq(previousTotalBalance.add(refund1).sub(txCost).add(ethers.utils.parseEther("0.1")));
+            expect(currentPaymasterBalance.sub(await paymaster.previousTotalBalance())).to.be.eq(refund2);
+            // Manager 1 has refund remaining. Manager2 will call withdraw() using paymaster
+            // Refund should be done correctly. PreviousManager should be updated to manager2
+
+            previousPaymasterBalance = await provider.getBalance(paymaster.address);
+            previousTotalBalance = await paymaster.previousTotalBalance();
+            beforeBalanceM1 = await paymaster.managerBalances(Manager1.address);
+            let balanceBeforeM2 = await paymaster.managerBalances(Manager2.address);
+            [paymasterParams, gasPrice] = await getPaymasterParams(paymaster, Manager2, signer2);
+            tx = await (await paymaster.connect(Manager2).withdraw(ethers.utils.parseEther("0.1"), {
+                maxPriorityFeePerGas: BigNumber.from(0),
+                maxFeePerGas: gasPrice,
+                gasLimit: 10000000,
+                customData: {
+                    paymasterParams,
+                    gasPerPubdata: utils.DEFAULT_GAS_PER_PUBDATA_LIMIT,
+                }
+            })).wait();
+            txCost = BigNumber.from(tx.events.at(0).data);
+            const refund3 = BigNumber.from(tx.events.at(-1).data);
+            currentPaymasterBalance = await provider.getBalance(paymaster.address);
+            expect(await paymaster.previousManager()).to.be.eq(Manager2.address);
+            expect(await paymaster.managerBalances(Manager1.address)).to.be.eq(beforeBalanceM1.add(refund2));
+            expect(await paymaster.previousTotalBalance()).to.be.eq(previousTotalBalance.add(refund2).sub(txCost).sub(ethers.utils.parseEther("0.1")));
+            expect(currentPaymasterBalance.sub(await paymaster.previousTotalBalance())).to.be.eq(refund3);
+            // Expect refunds to be completed
+            await paymaster.connect(Manager2).deposit({ value: ethers.utils.parseEther("0.1") });
+            expect(await paymaster.previousTotalBalance()).to.be.eq(await provider.getBalance(paymaster.address));
+
+            // Expect no change in Manager2 balance because refund is completed. 
+            balanceBeforeM2 = await paymaster.managerBalances(Manager2.address);
+            await executeERC20Transaction(erc20, paymaster, user1, signer1);
+            expect(await paymaster.managerBalances(Manager2.address)).to.be.eq(balanceBeforeM2);
+        });
+    });
+
+    //// -----------------------------------------------
+    //// Invalid Signature & Gas Estimation Test
+    //// -----------------------------------------------
+
+    describe("Gas estimate test", async () => {
+        it("should not decrease ETH balance on invalid signature", async () => {
+            const balanceBefore = await provider.getBalance(paymaster.address);
+            await expect(executeERC20Transaction(erc20, paymaster, user1, signer1,
+                {
+                    invalidSignature: true
+                }
+            )).to.be.rejected;
+            const balanceAfter = await provider.getBalance(paymaster.address);
+            await expect(balanceAfter).to.be.equal(balanceBefore);
+        });
+        it("should estimate gas correctly", async () => {
+            const gasEstimate_CorrectSig = await executeERC20Transaction(erc20, paymaster, user1, signer1, {
+                estimateGas: true,
+            });
+            const gasEstimate_InCorrectSig = await executeERC20Transaction(erc20, paymaster, user1, signer1, {
+                invalidSignature: true,
+                estimateGas: true,
+            });
+            expect(gasEstimate_CorrectSig).to.be.greaterThanOrEqual(gasEstimate_InCorrectSig);
+        })
+    });
+
+    //// -----------------------------------------------
+    //// Paymaster Transaction and Signature Test
+    //// -----------------------------------------------
 
     describe("Paymaster validations test", async () => {
         it("should validate and pay for the transaction", async () => {
@@ -188,11 +399,11 @@ describe("PermissionlessPaymaster", () => {
             const tx = await executeERC20Transaction(
                 erc20,
                 paymaster,
-                provider,
                 user1,
                 signer1
             );
-            //console.log(tx.events.at(-1).args.value);
+            //console.log(user1.address);
+            //console.log(tx.events);
             currentRefund = tx.events.at(-1).args.value;
             const balanceAfter = await erc20.balanceOf(user1.address);
             const refundAddress = await paymaster.previousManager();
@@ -209,7 +420,6 @@ describe("PermissionlessPaymaster", () => {
             const tx = await executeERC20Transaction(
                 erc20,
                 paymaster,
-                provider,
                 user1,
                 signer2
             );
@@ -254,7 +464,7 @@ describe("PermissionlessPaymaster", () => {
 
         it("should only allow general flow", async () => {
             await expect(
-                executeERC20Transaction(erc20, paymaster, provider, user1, signer2, {
+                executeERC20Transaction(erc20, paymaster, user1, signer2, {
                     type: "approval",
                 })
             ).to.be.rejectedWith("0xa6eb6873");
@@ -262,14 +472,14 @@ describe("PermissionlessPaymaster", () => {
 
         it("should reject incorrect paymaster input", async () => {
             await expect(
-                executeERC20Transaction(erc20, paymaster, provider, user1, signer2, {
+                executeERC20Transaction(erc20, paymaster, user1, signer2, {
                     invalidInnerInput: true,
                 })
             ).to.be.rejectedWith("0x");
         });
 
         it("should not allow expired signature", async () => {
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, signer1,
+            await expect(executeERC20Transaction(erc20, paymaster, user1, signer1,
                 {
                     expiredtx: true
                 }
@@ -277,7 +487,7 @@ describe("PermissionlessPaymaster", () => {
         });
 
         it("should not allow expired nonce", async () => {
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, signer1,
+            await expect(executeERC20Transaction(erc20, paymaster, user1, signer1,
                 {
                     usedNonce: true
                 }
@@ -285,36 +495,36 @@ describe("PermissionlessPaymaster", () => {
         });
 
         it("should not allow invalid signature", async () => {
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, signer1,
+            await expect(executeERC20Transaction(erc20, paymaster, user1, signer1,
                 {
                     invalidSignature: true
                 }
-            )).to.be.rejectedWith("0x2d4b72a2");
+            )).to.be.rejected;
         });
 
         it("should not allow signers that are not registered", async () => {
             // zyfi_rescue_wallet is not registered
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, zyfi_rescue_wallet)).to.be.rejectedWith("0x81c0c5d4");
+            await expect(executeERC20Transaction(erc20, paymaster, user1, zyfi_rescue_wallet)).to.be.rejectedWith("0x81c0c5d4");
         });
 
         it("should not allow to proceed with insufficient manager balance", async () => {
             const currentBalance = await paymaster.managerBalances(Manager1.address);
             await paymaster.connect(Manager1).withdraw(currentBalance.sub(100));
             // Currently is sufficient balance of Manager1
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, signer1)).to.be.rejectedWith("0x9625287c");
+            await expect(executeERC20Transaction(erc20, paymaster, user1, signer1)).to.be.rejectedWith("0x9625287c");
             expect(await paymaster.managerBalances(Manager1.address)).to.be.eq(BigNumber.from("100"));
             // For upcoming test
-            await paymaster.connect(Manager1).deposit({value: currentBalance.sub(100)});
+            await paymaster.connect(Manager1).deposit({ value: currentBalance.sub(100) });
         });
 
         it("should allow manager with multiple added signer to work as expected", async () => {
             const beforeBalance = await paymaster.managerBalances(Manager2.address);
             const gasPrice1 = await provider.getGasPrice();
-            const tx1 = await expect(executeERC20Transaction(erc20, paymaster, provider, user1, signer2)).not.to.be.rejected;
+            const tx1 = await expect(executeERC20Transaction(erc20, paymaster, user1, signer2)).not.to.be.rejected;
             const afterBalance1 = await paymaster.managerBalances(Manager2.address);
             const gasPrice2 = await provider.getGasPrice();
             currentRefund = tx1.events.at(-1).args.value;
-            const tx2 = await expect(executeERC20Transaction(erc20, paymaster, provider, user1, signer3)).not.to.be.rejected;
+            const tx2 = await expect(executeERC20Transaction(erc20, paymaster, user1, signer3)).not.to.be.rejected;
             const afterBalance2 = await paymaster.managerBalances(Manager2.address);
             expect(beforeBalance.sub(gasPrice1.mul(BigNumber.from("10000000")))).to.be.equal(afterBalance1);
             expect(afterBalance1.add(currentRefund).sub(gasPrice2.mul(BigNumber.from("10000000")))).to.be.equal(afterBalance2);
@@ -323,19 +533,24 @@ describe("PermissionlessPaymaster", () => {
 
         it("should allow manager as a signer to use paymaster as expected", async () => {
             const beforeBalance = await paymaster.managerBalances(Manager3.address);
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, Manager3)).not.to.be.rejected;
+            await expect(executeERC20Transaction(erc20, paymaster, user1, Manager3)).not.to.be.rejected;
             expect(await paymaster.managerBalances(Manager3.address)).to.be.lessThan(beforeBalance);
         });
     });
-    describe("Manager functionalities tests", async() => {
+    
+    //// -----------------------------------------------
+    //// Add / Remove Signers Functionality Test
+    //// -----------------------------------------------
+
+    describe("Manager functionalities tests", async () => {
         let newSigner = Wallet.createRandom();
         let newSigner1 = Wallet.createRandom();
         let newSigner2 = Wallet.createRandom();
-        it("should add signer correctly", async ()=> {
+        it("should add signer correctly", async () => {
             const tx = await (await paymaster.connect(Manager1).addSigner(newSigner.address)).wait();
             expect(tx.events[2].event).to.be.equal("SignerAdded");
             expect(await paymaster.managers(newSigner.address)).to.be.equal(Manager1.address);
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, newSigner)).not.to.be.rejected;
+            await expect(executeERC20Transaction(erc20, paymaster, user1, newSigner)).not.to.be.rejected;
             // Failure test
             await expect(paymaster.connect(Manager1).addSigner(ZERO_ADDRESS)).to.be.rejectedWith("0x02876945");
             await expect(paymaster.connect(Manager1).addSigner(newSigner.address)).to.be.rejectedWith("0xdbae7908");
@@ -345,25 +560,25 @@ describe("PermissionlessPaymaster", () => {
             //console.log(newSigner1,newSigner2);
             const tx = await (await paymaster.connect(Manager1).batchAddSigners([newSigner1.address.toString(), newSigner2.address.toString()])).wait();
             expect(tx.events.at(2).event).to.be.equal("SignerAdded");
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, newSigner1)).not.to.be.rejected;
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, newSigner2)).not.to.be.rejected;
+            await expect(executeERC20Transaction(erc20, paymaster, user1, newSigner1)).not.to.be.rejected;
+            await expect(executeERC20Transaction(erc20, paymaster, user1, newSigner2)).not.to.be.rejected;
             // Failure test
             await expect(paymaster.connect(Manager1).batchAddSigners([ZERO_ADDRESS, ZERO_ADDRESS])).to.be.rejectedWith("0x02876945");
             await expect(paymaster.connect(Manager1).batchAddSigners([newSigner1.address, ZERO_ADDRESS])).to.be.rejectedWith("0xdbae7908");
             await expect(paymaster.connect(Manager1).batchAddSigners([signer3.address, newSigner1.address])).to.be.rejectedWith("0xdbae7908");
 
-            
+
         });
         it("should replace signer correctly", async () => {
             const newSigner = Wallet.createRandom();
-            await expect(executeERC20Transaction(erc20,paymaster, provider, user1, signer2)).not.to.be.rejected;
+            await expect(executeERC20Transaction(erc20, paymaster, user1, signer2)).not.to.be.rejected;
             await paymaster.connect(Manager2).replaceSigner(signer2.address, newSigner.address);
-            await expect(executeERC20Transaction(erc20,paymaster, provider, user1, signer2)).to.be.rejectedWith("0x81c0c5d4");
-            await expect(executeERC20Transaction(erc20,paymaster, provider, Manager1, newSigner)).not.to.be.rejected;
+            await expect(executeERC20Transaction(erc20, paymaster, user1, signer2)).to.be.rejectedWith("0x81c0c5d4");
+            await expect(executeERC20Transaction(erc20, paymaster, user1, newSigner)).not.to.be.rejected;
             expect(await paymaster.managers(signer2.address)).to.be.equal(ZERO_ADDRESS);
             await paymaster.connect(Manager2).replaceSigner(newSigner.address, signer2.address);
             // Failure test
-            await expect(executeERC20Transaction(erc20,paymaster, provider, user1, newSigner)).to.be.rejectedWith("0x81c0c5d4");
+            await expect(executeERC20Transaction(erc20, paymaster, user1, newSigner)).to.be.rejectedWith("0x81c0c5d4");
             await expect(paymaster.connect(Manager2).replaceSigner(signer2.address, ZERO_ADDRESS)).to.be.rejectedWith("0x02876945");
             await expect(paymaster.connect(Manager2).replaceSigner(ZERO_ADDRESS, newSigner.address)).to.be.rejectedWith("0x02876945");
             await expect(paymaster.connect(Manager2).replaceSigner(signer1.address, newSigner.address)).to.be.rejectedWith("0xce37a54d");
@@ -373,70 +588,95 @@ describe("PermissionlessPaymaster", () => {
             const tx = await (await paymaster.connect(Manager1).removeSigner(newSigner.address)).wait();
             expect(tx.events[2].event).to.be.equal("SignerRemoved");
             expect(await paymaster.managers(newSigner.address)).to.be.equal(ZERO_ADDRESS);
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, newSigner)).to.be.rejectedWith("0x81c0c5d4");
+            await expect(executeERC20Transaction(erc20, paymaster, user1, newSigner)).to.be.rejectedWith("0x81c0c5d4");
             // Failure test
             await expect(paymaster.connect(Manager1).removeSigner(ZERO_ADDRESS)).to.be.rejectedWith("0x02876945");
             await expect(paymaster.connect(Manager1).removeSigner(newSigner.address)).to.be.rejectedWith("0xce37a54d");
             await expect(paymaster.connect(Manager1).removeSigner(signer3.address)).to.be.rejectedWith("0xce37a54d");
         });
         it("should batch remove signers correctly", async () => {
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, newSigner1)).not.to.be.rejected;
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, newSigner2)).not.to.be.rejected;
+            await expect(executeERC20Transaction(erc20, paymaster, user1, newSigner1)).not.to.be.rejected;
+            await expect(executeERC20Transaction(erc20, paymaster, user1, newSigner2)).not.to.be.rejected;
             const tx = await (await paymaster.connect(Manager1).batchRemoveSigners([newSigner1.address.toString(), newSigner2.address.toString()])).wait();
             expect(tx.events.at(2).event).to.be.equal("SignerRemoved");
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, newSigner1)).to.be.rejectedWith("0x81c0c5d4");
-            await expect(executeERC20Transaction(erc20, paymaster, provider, user1, newSigner2)).to.be.rejectedWith("0x81c0c5d4");
+            await expect(executeERC20Transaction(erc20, paymaster, user1, newSigner1)).to.be.rejectedWith("0x81c0c5d4");
+            await expect(executeERC20Transaction(erc20, paymaster, user1, newSigner2)).to.be.rejectedWith("0x81c0c5d4");
             // Failure test
             await expect(paymaster.connect(Manager1).batchRemoveSigners([ZERO_ADDRESS, ZERO_ADDRESS])).to.be.rejectedWith("0x02876945");
             await expect(paymaster.connect(Manager1).batchRemoveSigners([newSigner1.address, ZERO_ADDRESS])).to.be.rejectedWith("0xce37a54d");
             await expect(paymaster.connect(Manager1).batchRemoveSigners([signer3.address, newSigner1.address])).to.be.rejectedWith("0xce37a54d");
-        })
+        });
+
+        it("should allow signers to revoke self", async () => {
+            await expect(executeERC20Transaction(erc20, paymaster, user1, signer1)).not.to.be.rejected;
+            await paymaster.connect(signer1).selfRevokeSigner();
+            await expect(executeERC20Transaction(erc20, paymaster, user1, signer1)).to.be.rejectedWith("0x81c0c5d4");
+
+            // Resetting the state
+            await paymaster.connect(Manager1).addSigner(signer1.address);
+        });
     });
+
     //// -----------------------------------------------
     //// Withdraw Functions Test
     //// -----------------------------------------------
-    describe("Withdraw Functions test", async ()=> {
-        it("should withdraw funds correctly and updateRefund correctly", async() => {
+
+    describe("Withdraw Functions test", async () => {
+        it("should withdraw funds correctly and updateRefund correctly", async () => {
+            let paymasterEthBalance: any = await provider.getBalance(paymaster.address);
             const previousTotalBalance = await paymaster.previousTotalBalance();
-            const paymasterEthBalance = await provider.getBalance(paymaster.address);
+            paymasterEthBalance = await provider.getBalance(paymaster.address);
+
             const previousRefund = paymasterEthBalance.sub(previousTotalBalance);
             const balanceInPaymaster = await paymaster.managerBalances(Manager1.address);
-            const ethBalance = await provider.getBalance(Manager1.address);
+            let ethBalanceM1 = await provider.getBalance(Manager1.address);
             await expect(paymaster.connect(Manager1).withdraw(balanceInPaymaster.add(previousRefund).add(1))).to.be.rejectedWith("0x4e487b71"); // Panic error
             await expect(paymaster.connect(Manager1).withdraw(0)).not.to.be.rejected;
-            const gasPrice = await provider.getGasPrice();
-            const tx = await (await paymaster.connect(Manager1).withdraw(balanceInPaymaster)).wait();
-            expect(await provider.getBalance(Manager1.address)).to.be.greaterThan((ethBalance).add(balanceInPaymaster).add(previousRefund).sub(ethers.utils.parseEther("0.0003"))); // gas
+            expect(await paymaster.previousTotalBalance()).to.be.eq(paymasterEthBalance);
+            expect(await paymaster.managerBalances(Manager1.address)).to.be.eq(balanceInPaymaster.add(previousRefund));
+            ethBalanceM1 = await provider.getBalance(Manager1.address);
+            const tx = await (await paymaster.connect(Manager1).withdraw(balanceInPaymaster.add(previousRefund))).wait();
+            const preTxPaid = BigNumber.from(tx.events.at(-5).data);
+            const txRefund1 = BigNumber.from(tx.events.at(-4).data);
+            const txRefund2 = BigNumber.from(tx.events.at(-1).data);
+            const gasUsed = tx.gasUsed;
+            const gasPrice = tx.effectiveGasPrice;
+            expect(await provider.getBalance(Manager1.address)).to.be.eq((ethBalanceM1.add(balanceInPaymaster).add(previousRefund).sub(preTxPaid).add(txRefund1).add(txRefund2))); // gas
+            expect(await provider.getBalance(Manager1.address)).to.be.eq(ethBalanceM1.add(balanceInPaymaster).add(previousRefund).sub((gasUsed.mul(gasPrice))));
         });
         it("should withdraw full funds correctly", async () => {
             const balanceInPaymaster = await paymaster.managerBalances(Manager3.address);
             const ethBalance = await paymaster.managerBalances(Manager3.address);
             await expect(paymaster.connect(Manager3).withdrawFull()).not.to.be.rejected;
             expect(await provider.getBalance(Manager3.address)).to.be.greaterThan((ethBalance).add(balanceInPaymaster).sub(ethers.utils.parseEther("0.0003")));
-   
+
         });
         it("should withdraw and remove signers correctly", async () => {
             const balanceInPaymaster = await paymaster.managerBalances(Manager2.address);
             const ethBalance = await provider.getBalance(Manager2.address);
-            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(balanceInPaymaster.add(1),[signer2.address])).to.be.rejectedWith("0x4e487b71");
-            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(balanceInPaymaster.sub(1000),[])).not.to.be.rejected;
-            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(1000,[signer2.address])).not.to.be.rejected;
-            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(0,[signer3.address])).not.to.be.rejected;
-            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(1,[])).to.be.rejectedWith("0x4e487b71");
+            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(balanceInPaymaster.add(1), [signer2.address])).to.be.rejectedWith("0x4e487b71");
+            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(balanceInPaymaster.sub(1000), [])).not.to.be.rejected;
+            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(1000, [signer2.address])).not.to.be.rejected;
+            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(0, [signer3.address])).not.to.be.rejected;
+            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(1, [])).to.be.rejectedWith("0x4e487b71");
 
-            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(0,[ZERO_ADDRESS])).to.be.rejectedWith("0x02876945");
-            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(0,[signer1.address])).to.be.rejectedWith("0xce37a54d");
+            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(0, [ZERO_ADDRESS])).to.be.rejectedWith("0x02876945");
+            await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(0, [signer1.address])).to.be.rejectedWith("0xce37a54d");
             await expect(paymaster.connect(Manager2).withdrawAndRemoveSigners(0, [signer3.address])).to.be.rejectedWith("0xce37a54d");
         });
     });
 
+    //// -----------------------------------------------
+    //// Rescue Wallet Test
+    //// -----------------------------------------------    
+
     describe("Rescue Wallet tests", async () => {
-        it("Initial parameters are correctly set", async () => {
+        it("initial parameters are correctly set", async () => {
             expect(await paymaster.ZYFI_RESCUE_ADDRESS()).to.be.equal(
                 zyfi_rescue_wallet.address
             );
         });
-        it("Rescue wallet update test", async () => {
+        it("rescue wallet update test", async () => {
             await expect(
                 paymaster.connect(Manager1).updateRescueAddress(Manager1.address)
             ).to.be.rejectedWith("0x5001df4c");
@@ -447,8 +687,8 @@ describe("PermissionlessPaymaster", () => {
                 Manager2.address
             );
         });
-        it("Should rescue dropped token", async () => {
-            await erc20.connect(Manager1).transfer(paymaster.address,5);
+        it("should rescue dropped token", async () => {
+            await erc20.connect(zyfi_rescue_wallet).transfer(paymaster.address, 5);
             expect(await erc20.balanceOf(paymaster.address)).to.be.equal(5);
             await expect(paymaster.connect(Manager2).rescueTokens([erc20.address, ZERO_ADDRESS])).to.be.rejectedWith("0x02876945");
             await expect(paymaster.connect(Manager2).rescueTokens([erc20.address, Manager1.address])).to.be.rejected;

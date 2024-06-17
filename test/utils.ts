@@ -309,11 +309,13 @@ export async function getMessageHash(
     expiredtx?: boolean;
     // If true, set a used nonce
     usedNonce?: boolean;
+    // If true, only estimate gas
+    estimateGas?: boolean;
   };
 
   export function getInnerInputs(
-    expiration: BigNumber,
-    maxNonce: BigNumber,
+    expiration: BigNumber | Number,
+    maxNonce: BigNumber | Number,
     signerAddress: string,
     signature: string
   ){
@@ -325,10 +327,10 @@ export async function getMessageHash(
   export async function getEIP712Signature(
     from: string,
     to: string | undefined,
-    expirationTime: BigNumber,
-    maxNonce: BigNumber,
-    maxFeePerGas: BigNumber,
-    gasLimit: BigNumber,
+    expirationTime: BigNumber | Number,
+    maxNonce: BigNumber | Number,
+    maxFeePerGas: BigNumber | Number,
+    gasLimit: BigNumber | Number,
     signer: Wallet,
     paymaster: Contract
   ){
@@ -364,11 +366,11 @@ export async function getMessageHash(
   export async function executeERC20Transaction(
     to: Contract | null, 
     paymaster: Contract,
-    provider: Provider,
     user: Wallet,
     signer: Wallet,
     options?: executeTransactionOptions
   ) {
+    const provider = getProvider();
     const gasPrice = await provider.getGasPrice();
     let _signer = signer;
     let _signerAddress = signer.address;
@@ -453,7 +455,19 @@ export async function getMessageHash(
     //console.log(BigNumber.from(gasPrice));
     //console.log(BigNumber.from(GAS_LIMIT));
 
-
+  if(options?.estimateGas){
+    return  (
+      await to?.connect(user).estimateGas.mint(user.address, 5, {
+        maxPriorityFeePerGas: BigNumber.from(0),
+        maxFeePerGas: gasPrice,
+        gasLimit: GAS_LIMIT,
+        customData: {
+          paymasterParams,
+          gasPerPubdata: utils.DEFAULT_GAS_PER_PUBDATA_LIMIT,
+        },
+      })
+    );
+  }
     return await (
       await to?.connect(user).mint(user.address, 5, {
         maxPriorityFeePerGas: BigNumber.from(0),
