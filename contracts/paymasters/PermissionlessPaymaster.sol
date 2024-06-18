@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-// Users are solely responsible for ensuring that their design, implementation, and use of this paymaster smart contract
+// Disclaimer: Users are solely responsible for ensuring that their design, implementation, and use of this paymaster smart contract
 // complies with all applicable laws, including but not limited to money transmission, anti-money laundering (AML), and
 // payment processing regulations.
 // The developers and publishers of this contract disclaim any liability for any legal issues that may arise from its use.

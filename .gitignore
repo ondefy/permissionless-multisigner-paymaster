@@ -114,3 +114,6 @@ dist
 
 # Deployments-zk 
 deployments-zk/
+
+# DS_Store
+*/.DS_Store
