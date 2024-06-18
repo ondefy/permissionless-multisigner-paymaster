@@ -111,9 +111,8 @@ Balance_of_paymaster ≥ (Σ Manager_Balances_in_paymaster)
 
 ## Gas 
 
-- Simple mint transaction : 134_228
-- ![image](./img/gas-withoutPaymaster.png)
+- Simple mint transaction : Total - 400_261, Account Validation - 134_228
+> ![image](./img/gas-withoutPaymaster.png)
 ---
-- With Paymaster overhead : 184_234 (50k difference)
-
-![image](./img/gas-paymaster1.png)
+- With Paymaster overhead : Total - 655_008 (255k difference), Account Validation - 184_234 (50k difference) 
+> ![image](./img/gas-paymaster1.png)
