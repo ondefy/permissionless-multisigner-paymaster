@@ -68,7 +68,7 @@ hash(
 ```
 
 ## Refunds
-- Zksync refunds the amount for the unused gas from what was initially charged by the paymaster.
+- Zksync refunds the amount for the unused gas initially charged to the paymaster.
 - In this paymaster, refunds are managed through internal `updateRefund` functions.
 - Due to `_maxRefundedGas` in `postTransaction()` not being accurate, the refund is processed in the next transaction. 
 
@@ -82,11 +82,11 @@ Balance_of_paymaster ≥ (Σ Manager_Balances_in_paymaster)
 
 ## Area of concerns 
 
-1. Manipulation of update refunds. Inflation of `previousTotalBalance` in any manner. 
+1. Manipulation of update refunds. For eg: Inflation of `previousTotalBalance` in any manner or managers are refunded more than deserving amount. 
 2. Gas griefing attacks that drains the paymaster. For eg: Invalid signature returns magic = bytes4(0) instead of reverting. Could this be used to drain paymaster funds in the future? 
 3. Funds being stuck in  the paymaster.
-4. Any particular way that affects the reputation of paymaster in future as mentioned [here](https://docs.zksync.io/build/developer-reference/account-abstraction/paymasters#paymaster-verification-rules) 
-5. Signature replay attacks
+4. Any particular way that affects the reputation of paymaster in future as mentioned [here](https://docs.zksync.io/build/developer-reference/account-abstraction/paymasters#paymaster-verification-rules).
+5. Signature replay attacks.
 
 ## Known issues/ Expected behaviour
 
@@ -97,7 +97,7 @@ Balance_of_paymaster ≥ (Σ Manager_Balances_in_paymaster)
 
 #### 2. Griefing attacks while adding signers
 - `depositAndAddSigner`, `addSigner`, `batchAddSigners` are subject to griefing attacks. 
-- While this in-evitable scenario, we have `selfRevokeSigner` to minimalize the impact. Since signers can be any address, the impact reduces further.  
+- While this an in-evitable scenario, we have `selfRevokeSigner` to minimalize the impact. Since signers can be any address, the impact reduces further.  
 
 #### 3. Eth sent using self-destruct is rewarded to `previousManager`. 
 - Expected behaviour
@@ -109,4 +109,11 @@ Balance_of_paymaster ≥ (Σ Manager_Balances_in_paymaster)
 - The chances of tokens mistakenly sent to the paymaster are already low. 
 - Hence, we have decided to keep the design simple.
 
+## Gas 
 
+- Simple mint transaction : 134_228
+- ![image](./img/gas-withoutPaymaster.png)
+---
+- With Paymaster overhead : 184_234 (50k difference)
+
+![image](./img/gas-paymaster1.png)
