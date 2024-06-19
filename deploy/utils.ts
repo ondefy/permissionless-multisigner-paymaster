@@ -1,13 +1,13 @@
-import { Provider, Wallet } from "zksync-ethers";
+import { Provider, Wallet, Contract, utils} from "zksync-ethers";
 import * as hre from "hardhat";
 import { Deployer } from "@matterlabs/hardhat-zksync";
 import dotenv from "dotenv";
 import { formatEther } from "ethers/lib/utils";
-import { BigNumberish } from "ethers";
+import { ethers, BigNumberish, BigNumber } from "ethers";
 
 import "@matterlabs/hardhat-zksync-node/dist/type-extensions";
 import "@matterlabs/hardhat-zksync-verify/dist/src/type-extensions";
-
+const abiCoder = new ethers.utils.AbiCoder();
 // Load env file
 dotenv.config();
 
@@ -120,6 +120,74 @@ export const deployContract = async (contractArtifactName: string, constructorAr
 
   return contract;
 }
+export function getInnerInputs(
+  expiration: BigNumber | Number,
+  maxNonce: BigNumber | Number,
+  signerAddress: string,
+  signature: string
+){
+  const innerInput = ethers.utils.arrayify(
+    abiCoder.encode(["uint256", "uint256", "address", "bytes"], [expiration, maxNonce, signerAddress, signature]),
+  );
+  return innerInput;
+}
+export async function getEIP712Signature(
+  from: string,
+  to: string | undefined,
+  expirationTime: BigNumber | Number,
+  maxNonce: BigNumber | Number,
+  maxFeePerGas: BigNumber | Number,
+  gasLimit: BigNumber | Number,
+  signer: Wallet,
+  paymaster: Contract
+){
+  const eip712Domain = await paymaster.eip712Domain();
+  const domain = {
+    name: eip712Domain[1],
+    version: eip712Domain[2],
+    chainId: eip712Domain[3],
+    verifyingContract: eip712Domain[4],
+  }
+  const types = {
+    PermissionLessPaymaster: [
+      { name: "from", type: "address"},
+      { name: "to", type: "address"},
+      { name: "expirationTime", type: "uint256"},
+      { name: "maxNonce", type: "uint256"},
+      { name: "maxFeePerGas", type: "uint256"},
+      { name: "gasLimit", type: "uint256"}
+    ]
+  };
+  const values = {
+    from,
+    to,
+    expirationTime,
+    maxNonce,
+    maxFeePerGas,
+    gasLimit
+  }
+
+  return (await signer._signTypedData(domain, types, values));
+
+};
+export const createPaymasterParams = async (paymaster: Contract, from: Wallet, to: Wallet|Contract, signer: Wallet) => {
+  const provider = getProvider();
+  const gasPrice = await provider.getGasPrice();
+  const gasLimit = BigNumber.from(10_000_000);
+  const maxNonce = (await provider.getTransactionCount(from.address))+5;
+  const expiration = ((await provider.getBlock("latest")).timestamp) + 120;
+  // Signer signs the required data
+  const sig = await getEIP712Signature(from.address, to.address, BigNumber.from(expiration), BigNumber.from(maxNonce), gasPrice, gasLimit, signer, paymaster);
+  const innerInputs = getInnerInputs(BigNumber.from(expiration),BigNumber.from(maxNonce) , signer.address, sig);
+  const paymasterParams = utils.getPaymasterParams(
+      paymaster.address.toString(),
+      {
+          type: "General",
+          innerInput: innerInputs
+      }
+  );
+  return [paymasterParams, gasPrice, gasLimit];
+};
 
 /**
  * Rich wallets can be used for testing purposes.

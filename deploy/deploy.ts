@@ -1,10 +1,9 @@
-import { deployContract } from "./utils";
+import { deployContract, getWallet } from "./utils";
+import dotenv from "dotenv";
 
-// An example of a basic deploy script
-// It will deploy a Greeter contract to selected network
-// as well as verify it on Block Explorer if possible for the network
+dotenv.config();
 export default async function () {
-  const contractArtifactName = "Greeter";
-  const constructorArguments = ["Hi there!"];
-  await deployContract(contractArtifactName, constructorArguments);
+  const contractArtifactName = "PermissionlessPaymaster";
+  const constructorArguments = getWallet().address;
+  await deployContract(contractArtifactName, [constructorArguments]);
 }
