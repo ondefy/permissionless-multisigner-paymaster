@@ -45,8 +45,9 @@
 ### Users 
 1. Users are the end-users that will receive a sponsored transaction from the DApp to sign. They will be easily able to verify that the transaction does not require any gas payment from their side.
 
-### Zyfi Token Rescue Account 
+### Zyfi Manager
 1. Zyfi managed address to rescue any ERC-20 token (other than ETH) that mistakenly is sent to the paymaster address.
+2. To collect markup fee. This functionality is optional for Zyfi API only, Dapps are expected to set the markup to 0 unless they want to donate.
 
 ## Signature 
 
@@ -63,9 +64,38 @@ hash(
     _expirationTime,
     _maxNonce,
     _maxFeePerGas,
-    _gasLimit
+    _gasLimit,
+    _markupPercent
 ))
 ```
+#### _from :
+- The user address the signer wants to sponsor. Taken from "transaction.from"
+
+#### _to : 
+- The target contract user address is interacting to. Taken from "transaction.to". 
+- Design question: Worst case scenario if signers have ability to make "transaction.to" optional in signature. 
+
+#### _expirationTime :
+- Timestamp post which the signature expires.
+Taken from innerInputs provided by signer
+
+#### _maxNonce :
+- Nonce of the user post which signature cannot be replayed. Taken from innerInputs provided by signer
+- Allows flexibility for Dapps to allow replaying signature since transaction.to(Dapp's contract) will be same.
+
+#### _maxFeePerGas : 
+- Max gas price. To avoid gas price inflation attacks.
+Taken from transaction.maxFeePerGas
+
+#### _gasLimit :
+- To avoid gas manipulation attacks.
+Taken from transaction.gasLimit 
+
+#### _markupPercent :
+- Optional markup to be added by signer. 
+Taken from innerInputs
+- If markupPercent cannot exceed 100% of required Eth. If markupPercent > 100%, then it is set to 100%.
+
 
 ## Refunds
 - Zksync refunds the amount for the unused gas initially charged to the paymaster.
@@ -82,7 +112,7 @@ Balance_of_paymaster ≥ (Σ Manager_Balances_in_paymaster)
 
 ## Area of concerns 
 
-1. Manipulation of update refunds. For eg: Inflation of `previousTotalBalance` in any manner or managers are refunded more than deserving amount. 
+1. Manipulation of update refunds. For eg: Inflation/deflation of `previousTotalBalance` in any manner or managers are refunded more than deserving amount. 
 2. Gas griefing attacks that drains the paymaster. For eg: Invalid signature returns magic = bytes4(0) instead of reverting. Could this be used to drain paymaster funds in the future? 
 3. Funds being stuck in  the paymaster.
 4. Any particular way that affects the reputation of paymaster in future as mentioned [here](https://docs.zksync.io/build/developer-reference/account-abstraction/paymasters#paymaster-verification-rules).
@@ -102,17 +132,21 @@ Balance_of_paymaster ≥ (Σ Manager_Balances_in_paymaster)
 #### 3. Eth sent using self-destruct is rewarded to `previousManager`. 
 - Expected behaviour
 
-#### 4. Eth sent by self-destructing manager to paymaster using paymaster itself are stuck forever.
+#### 4. Eth sent by self-destructing manager to paymaster using paymaster itself is stuck forever.
 - Expected behaviour
 
-#### 5. No 2-step transfer for `ZYFI_RESCUE_TOKEN_ADDRESS` 
+#### 5. No 2-step transfer for `ZYFI_MANAGER` 
 - The chances of tokens mistakenly sent to the paymaster are already low. 
 - Hence, we have decided to keep the design simple.
 
 ## Gas 
+Interested in gas savings while maintain readability especially in `validateAndPayForPaymasterTransaction()` function.
 
-- Simple mint transaction : Transaction total gas - 400_261, Gas used - 134_228
-> ![image](./img/gas-withoutPaymaster.png)
+- Simple mint transaction : Transaction total gas : 390_107 | Gas used : 134_228
+> ![image](./img/gas-withoutPaymaster1.png)
 ---
-- With Paymaster overhead : Transaction total gas - 655_008 (255k difference), Gas used - 184_234 (50k difference) 
-> ![image](./img/gas-paymaster1.png)
+- With Paymaster overhead : Transaction total gas : 667_043 | Gas used : 182_490 (48k difference)
+> ![image](./img/gas-paymaster-withoutMarkup.png)
+---
+- With Paymaster overhead and markup : Transaction total gas : 466_751 | Gas used : 192_922 (58k difference)
+> ![image](./img/gas-paymaster-withMarkup.png)
