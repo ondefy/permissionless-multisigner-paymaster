@@ -46,7 +46,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     using SafeERC20 for IERC20;
 
     /// @notice Denomination for the markup percent
-    uint256 constant DENOMINATION = 10 ** 4;
+    uint256 constant DENOMINATION = 1e4;
 
     /// @notice Type hash used when encoding data for validation signature
     bytes32 public constant SIGNATURE_TYPEHASH =
@@ -233,8 +233,8 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
                 if (markupPercent > DENOMINATION) {
                     markupPercent = DENOMINATION;
                 }
-                /// @dev Percent is out of 100_00 instead of 100. So, for 10% = 1000 markupPercent, for 33.33% = 3333 markupPercent, for 0.01% = 1 markupPercent
-                uint256 markup = (requiredETH * markupPercent) / (10 ** 4);
+                /// @dev Percent denominator is 100_00 instead of 100. So, for 10% = 1000 markupPercent, for 33.33% = 3333 markupPercent, for 0.01% = 1 markupPercent
+                uint256 markup = (requiredETH * markupPercent) / DENOMINATION;
                 // Add the markup to the Zyfi_treasury balance
                 managerBalances[ZYFI_TREASURY] += markup;
                 // Add to the total ETH amount to be deducted from the manager
