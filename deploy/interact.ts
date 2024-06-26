@@ -7,13 +7,13 @@ import dotenv from "dotenv";
 dotenv.config();
 // Address of the contract to interact with
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-const CONTRACT_ADDRESS = "0x9894D8f35bb235094a4d829289b5EBca6906c0C5";
+const CONTRACT_ADDRESS = "0x2cc36D81E271B9869F6F786C804Cf6b052594F4f";
 const ERC20_ADDRESS = "0xe1134444211593Cfda9fc9eCc7B43208615556E2" // UNI ADDRESS ON SEPOLIA
 if (!CONTRACT_ADDRESS) throw "⛔️ Provide address of the contract to interact with!";
 
 
 export default async function () {
-  console.log(`Running script to interact with contract ${CONTRACT_ADDRESS}`);
+  console.log(`\n Running script to interact with contract ${CONTRACT_ADDRESS}`);
 
   // Load compiled contract info
   const paymasterArtifact = await hre.artifacts.readArtifact("PermissionlessPaymaster");
@@ -26,7 +26,7 @@ export default async function () {
   // Create random user
   const random = Wallet.createRandom();
   const user = getWallet(random.privateKey);
-  console.log(`\nCreating random user to interact with paymaster: ${user.address} \nPrivate Key of user- ${user.privateKey}\n`);
+  console.log(`\nCreating random user to interact with paymaster: ${user.address} \nPrivate Key of random user- ${user.privateKey}\n`);
   // Initialize contract instance for interaction
   const paymaster = new Contract(
     CONTRACT_ADDRESS,
@@ -96,8 +96,10 @@ export default async function () {
   console.log(`Deducted from manager balance in paymaster ${ethers.utils.formatEther(await paymaster.managerBalances(manager.address))} \n`);
 
   const withdrawAmount = await paymaster.managerBalances(manager.address);
+  const withdrawAmountLatest = await paymaster.getLatestManagerBalance(manager.address);
+  console.log(`Get Latest balance includes refunds to be added: ${withdrawAmountLatest} \n`);
   const withdrawTransaction = await paymaster.withdrawAndRemoveSigners(withdrawAmount, [signer.address]);
-  console.log(`Manager calls withdraw with full amount and removing signer - Transaction hash: ${withdrawTransaction.hash} \n`);
+  console.log(`Manager calls withdraw with current managerBalance : ${withdrawAmount} and removing signer - Transaction hash: ${withdrawTransaction.hash} \n`);
   await withdrawTransaction.wait();
   const previousRefund = await paymaster.managerBalances(manager.address);
   console.log(`Only previous refund remaining in paymaster manager balance: ${ethers.utils.formatEther(previousRefund)} \n`);
