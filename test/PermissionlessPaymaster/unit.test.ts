@@ -210,7 +210,7 @@ describe("PermissionlessPaymaster", () => {
     //// Update Refunds Test 
     //// -----------------------------------------------
 
-    describe("Update refund Tests", async () => {
+    describe("Update refund test", async () => {
         let previousTotalBalance;
         let currentPaymasterBalance;
         let previousPaymasterBalance;
@@ -638,7 +638,7 @@ describe("PermissionlessPaymaster", () => {
     //// Add / Remove Signers Functionality Test
     //// -----------------------------------------------
 
-    describe("Manager functionalities tests", async () => {
+    describe("Manager functionalities test", async () => {
         let newSigner = Wallet.createRandom();
         let newSigner1 = Wallet.createRandom();
         let newSigner2 = Wallet.createRandom();
