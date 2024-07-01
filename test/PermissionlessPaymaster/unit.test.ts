@@ -794,4 +794,25 @@ describe("PermissionlessPaymaster", () => {
             expect(await erc20.balanceOf(await paymaster.ZYFI_TREASURY())).to.be.equal(5);
         });
     });
+
+    //// -----------------------------------------------
+    //// Post audit -  fix test
+    //// -----------------------------------------------
+    
+    describe("Post audit fix test", async () => {
+        it("self revoke should not update previousManager", async () => {
+            // Setup
+            await paymaster.connect(Manager2).depositAndAddSigner(signer2.address,{
+                value: ethers.utils.parseEther("0.1")
+            });
+            await executeERC20Transaction(erc20, paymaster, user1, signer2);
+            expect(await paymaster.previousManager()).to.be.eq(Manager2.address);
+            // Self revoke signer call
+            await paymaster.connect(signer2).selfRevokeSigner();
+            // Checks
+            await expect(executeERC20Transaction(erc20, paymaster, user1, signer2)).to.be.rejectedWith("0x81c0c5d4");
+            expect(await paymaster.previousManager()).to.be.eq(Manager2.address);
+            expect(await paymaster.managers(signer2.address)).to.be.eq(ZERO_ADDRESS);
+        });
+    });
 });
