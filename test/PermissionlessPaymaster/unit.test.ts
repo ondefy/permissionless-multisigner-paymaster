@@ -546,12 +546,12 @@ describe("PermissionlessPaymaster", () => {
     });
 
     //// -----------------------------------------------
-    //// Markup cost and Zyfi_Treasury balance test 
+    //// Markup cost and Zyfi treasury balance test
     //// -----------------------------------------------
 
     describe("Paymaster markup cost test", async () => {
         it("should deduct markup cost correctly with view function test", async () => {
-            const treasuryAddress = await paymaster.ZYFI_TREASURY();
+            const treasuryAddress = await paymaster.zyfi_treasury();
             const treasuryBalance = await paymaster.managerBalances(treasuryAddress);
             let tx = await executeERC20Transaction(
                 erc20,
@@ -594,7 +594,7 @@ describe("PermissionlessPaymaster", () => {
 
         });
         it("should not deduct markup more than 100%", async() => {
-            const treasuryAddress = await paymaster.ZYFI_TREASURY();
+            const treasuryAddress = await paymaster.zyfi_treasury();
             const treasuryBalance = await paymaster.managerBalances(treasuryAddress);
             const tx = await executeERC20Transaction(
                 erc20,
@@ -613,7 +613,7 @@ describe("PermissionlessPaymaster", () => {
             expect(markUpCost).to.be.equal(txCost);
         });
         it("should update balance correctly while changing Zyfi Treasury address ", async () => {
-            const treasuryAddress = await paymaster.ZYFI_TREASURY();
+            const treasuryAddress = await paymaster.zyfi_treasury();
             const treasuryBalance = await paymaster.managerBalances(treasuryAddress);
             // Should not multiply if treasuryAddress is changed to same address
             await expect(paymaster.connect(zyfi_rescue_wallet).updateTreasuryAddress(zyfi_rescue_wallet.address)).not.to.be.rejected;
@@ -763,12 +763,12 @@ describe("PermissionlessPaymaster", () => {
     });
 
     //// -----------------------------------------------
-    //// Rescue Wallet/ ZYFI_MANAGER update Test 
+    //// Rescue Wallet/ Zyfi treasury update Test 
     //// -----------------------------------------------    
 
     describe("Rescue Token tests", async () => {
         it("initial parameters are correctly set", async () => {
-            expect(await paymaster.ZYFI_TREASURY()).to.be.equal(
+            expect(await paymaster.zyfi_treasury()).to.be.equal(
                 zyfi_rescue_wallet.address
             );
         });
@@ -779,7 +779,7 @@ describe("PermissionlessPaymaster", () => {
             await paymaster
                 .connect(zyfi_rescue_wallet)
                 .updateTreasuryAddress(Manager2.address);
-            expect(await paymaster.ZYFI_TREASURY()).to.be.equal(
+            expect(await paymaster.zyfi_treasury()).to.be.equal(
                 Manager2.address
             );
             await expect(paymaster.connect(zyfi_rescue_wallet).updateTreasuryAddress(zyfi_rescue_wallet.address)).to.be.rejected;
@@ -791,7 +791,7 @@ describe("PermissionlessPaymaster", () => {
             await expect(paymaster.connect(Manager2).rescueTokens([erc20.address, ZERO_ADDRESS])).to.be.rejectedWith("0x02876945");
             await expect(paymaster.connect(Manager2).rescueTokens([erc20.address, Manager1.address])).to.be.rejected;
             await expect(paymaster.connect(Manager2).rescueTokens([erc20.address])).not.to.be.rejected;
-            expect(await erc20.balanceOf(await paymaster.ZYFI_TREASURY())).to.be.equal(5);
+            expect(await erc20.balanceOf(await paymaster.zyfi_treasury())).to.be.equal(5);
         });
     });
 });

@@ -55,7 +55,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         );
 
     /// @notice Rescue address managed by Zyfi to rescue mistakenly sent ERC20 tokens and to collect markup fee/donation.
-    address public ZYFI_TREASURY;
+    address public zyfi_treasury;
 
     /// @notice Get manager of a signer address
     /// Stores manager address of a respective signer. Unregitered signers will have address(0) as mansager.
@@ -95,18 +95,18 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         uint amount,
         uint markup
     );
-    /// @notice Event to be emitted when ZYFI_TREASURY is changed
+    /// @notice Event to be emitted when zyfi_treasury is changed
     event TreasuryChanged(
         address indexed oldTreasury,
         address indexed newTreasury
     );
 
-    /// @param zyfi_address - Rescue address managed by Zyfi to rescue ERC-20 tokens
+    /// @param zyfi_address - Rescue address managed by Zyfi to rescue ERC-20 tokens & collect markup if any.
     constructor(
         address zyfi_address
     ) EIP712("Permissionless Paymaster", "1.0") {
         require(zyfi_address != address(0), "Address cannot be zero");
-        ZYFI_TREASURY = zyfi_address;
+        zyfi_treasury = zyfi_address;
     }
 
     /// @notice Modifier to ensure function is only called by bootloader
@@ -235,8 +235,8 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
                 }
                 /// @dev Percent denominator is 100_00 instead of 100. So, for 10% = 1000 markupPercent, for 33.33% = 3333 markupPercent, for 0.01% = 1 markupPercent
                 uint256 markup = (requiredETH * markupPercent) / DENOMINATION;
-                // Add the markup to the Zyfi_treasury balance
-                managerBalances[ZYFI_TREASURY] += markup;
+                // Add the markup to the zyfi_treasury balance
+                managerBalances[zyfi_treasury] += markup;
                 // Add to the total ETH amount to be deducted from the manager
                 totalDeductETH += markup;
             }
@@ -511,7 +511,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
                 _tokens[i] == address(0)
             ) revert Errors.PM_InvalidAddress();
             IERC20(_tokens[i]).safeTransfer(
-                ZYFI_TREASURY,
+                zyfi_treasury,
                 IERC20(_tokens[i]).balanceOf(address(this))
             );
             unchecked {
@@ -527,10 +527,10 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     }
     /**
      * @notice Update rescue address
-     * @dev Only ZYFI_TREASURY can call this method
+     * @dev Only zyfi_treasury can call this method
      */
     function updateTreasuryAddress(address _newAddress) public {
-        address _oldTreasury = ZYFI_TREASURY;
+        address _oldTreasury = zyfi_treasury;
         if (msg.sender != _oldTreasury) revert Errors.PM_Unauthorized();
         if (_newAddress == address(0)) revert Errors.PM_InvalidAddress();
         updateRefund(0, false);
@@ -538,7 +538,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         uint balance = managerBalances[_oldTreasury];
         managerBalances[_oldTreasury] = 0;
         managerBalances[_newAddress] += balance;
-        ZYFI_TREASURY = _newAddress;
+        zyfi_treasury = _newAddress;
         emit TreasuryChanged(_oldTreasury, _newAddress);
     }
     /**
