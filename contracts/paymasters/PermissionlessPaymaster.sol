@@ -374,9 +374,9 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
      * @dev To reduce impact of griefing attacks where a malicious manager frontruns and adds unrelated signer
      */
     function selfRevokeSigner() public {
-        previousManager = managers[msg.sender];
+        address _oldManager = managers[msg.sender];
         managers[msg.sender] = address(0);
-        emit SignerRevoked(previousManager, msg.sender);
+        emit SignerRevoked(_oldManager, msg.sender);
     }
     /**
      * @notice Allow manager to add multiple signers
