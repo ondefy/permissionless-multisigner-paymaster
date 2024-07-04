@@ -141,11 +141,11 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
                 (address(this).balance - _previousTotalBalance);
         }
         // Incase of consecutive deposits and withdrawals, previousTotalBalance needs to be updated.
-        if (isWithdraw) {
-            previousTotalBalance = address(this).balance - amount;
-        } else {
+        if (!isWithdraw) {
             // For deposit, address(this).balance is already updated.
             previousTotalBalance = address(this).balance;
+        } else {
+            previousTotalBalance = address(this).balance - amount;
         }
     }
     /// @inheritdoc IPaymaster
