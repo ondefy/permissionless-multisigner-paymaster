@@ -58,7 +58,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     address public zyfi_treasury;
 
     /// @notice Get manager of a signer address
-    /// Stores manager address of a respective signer. Unregitered signers will have address(0) as mansager.
+    /// Stores manager address of a respective signer. Unregstered signers will have address(0) as manager.
     /// @dev One-to-many relation between manager and signers. Managers can be signers too.
     mapping(address signer => address manager) public managers;
 
