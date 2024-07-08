@@ -3,6 +3,8 @@ A singular permissionless multi-signer paymaster allowing multiple dapps to seam
 
 This project is scaffolded with [zksync-cli](https://github.com/matter-labs/zksync-cli).
 
+![image](./img/cover.png)
+
 ## Overview
 - This paymaster is a signature based paymaster, it sponsor gas fees for any user transaction if valid signature is provided.
 - Any Dapps can integrate this paymaster by simply depositing gas funds and adding a signer address. 
