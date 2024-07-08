@@ -38,7 +38,6 @@ describe("PermissionlessPaymaster", () => {
 
     let currentRefund: BigNumber;
     let paymaster: Contract;
-    let greeter: Contract;
     let erc20: Contract;
     const deployPaymaster = async () => {
         paymaster = await deployContract(
@@ -96,12 +95,7 @@ describe("PermissionlessPaymaster", () => {
         // Deploy paymaster;
         paymaster = await deployPaymaster();
         console.log("Paymaster address : ", paymaster.address);
-        greeter = await deployContract("Greeter", ["Hello World"], {
-            silent: true,
-            noVerify: true,
-            proxy: false,
-            wallet: zyfi_rescue_wallet,
-        });
+
         erc20 = await deployContract("MyERC20Token", [], {
             silent: true,
             noVerify: true,

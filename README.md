@@ -81,5 +81,6 @@ yarn test-local
 
 ## Links
 
+- [Technical Specs](./technical_specs.md)
 - [Zyfi portal](https://zyfi.org/)
 - [Documentation](https://docs.zyfi.org/)
