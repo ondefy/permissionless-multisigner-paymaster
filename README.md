@@ -28,6 +28,11 @@ This signature based implementation allows the following features:
 - No need for Dapps to deploy paymaster with custom business logic.
 - Easy integration to your Dapp with optional Zyfi API support available.
 
+### Contract address
+Network | Address
+| --- | --- |
+| ZKsync Mainnet | 0xF8dc9e1a5C6cdC9aBC0FbF2F7E08Fd40606cFdB8 |
+| ZKsync Sepolia Testnet | 0xF8dc9e1a5C6cdC9aBC0FbF2F7E08Fd40606cFdB8 |
 
 ## Project structure
 
