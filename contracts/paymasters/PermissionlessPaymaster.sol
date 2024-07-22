@@ -567,4 +567,12 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     ) public view returns (uint256) {
         return getLatestManagerBalance(managers[_signer]);
     }
+
+    /**
+     * @notice Function to increase balance in the protocol. 
+     * This amount will be eventually donated to the balance of previousManager. 
+     */
+    function donateToPreviousManager() public payable{
+
+    }
 }
