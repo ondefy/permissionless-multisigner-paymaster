@@ -136,8 +136,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         }
         // Note, if false then there is no refund or refund is already updated.
         if (address(this).balance != _previousTotalBalance) {
-            managerBalances[previousManager] =
-                managerBalances[previousManager] +
+            managerBalances[previousManager] +=
                 (address(this).balance - _previousTotalBalance);
         }
         // Incase of consecutive deposits and withdrawals, previousTotalBalance needs to be updated.
