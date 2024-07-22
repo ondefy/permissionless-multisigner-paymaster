@@ -465,7 +465,7 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
      * Current refunds still remain which is expected behavior
      */
     function withdrawFull() public {
-        uint256 balance = managerBalances[msg.sender];
+        uint256 balance = getLatestManagerBalance(msg.sender);
         updateRefund(balance, true);
         managerBalances[msg.sender] -= balance;
         (bool success, ) = payable(msg.sender).call{value: balance}("");
