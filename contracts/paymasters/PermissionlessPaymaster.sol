@@ -448,14 +448,14 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     }
     /**
      * @notice Allows manager to withdraw funds
-     * @param amount Amount to be withdrawn
+     * @param _amount Amount to be withdrawn
      */
-    function withdraw(uint256 amount) public {
-        updateRefund(amount, true);
-        managerBalances[msg.sender] -= amount;
-        (bool success, ) = payable(msg.sender).call{value: amount}("");
+    function withdraw(uint256 _amount) public {
+        updateRefund(_amount, true);
+        managerBalances[msg.sender] -= _amount;
+        (bool success, ) = payable(msg.sender).call{value: _amount}("");
         if (!success) revert Errors.PM_FailedTransfer();
-        emit Withdraw(msg.sender, amount);
+        emit Withdraw(msg.sender, _amount);
     }
     /**
      * @notice Allows manager to withdraw all funds
@@ -473,15 +473,15 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
     }
     /**
      * @notice Allows manager to withdraw funds and remove signers
-     * @param amount Amount to be withdrawn
+     * @param _amount Amount to be withdrawn
      * @param _signers Array of signer addresses to be removed
      */
     function withdrawAndRemoveSigners(
-        uint256 amount,
+        uint256 _amount,
         address[] memory _signers
     ) public {
-        updateRefund(amount, true);
-        managerBalances[msg.sender] -= amount;
+        updateRefund(_amount, true);
+        managerBalances[msg.sender] -= _amount;
         uint256 length = _signers.length;
         for (uint256 i = 0; i < length; ) {
             if (_signers[i] == address(0)) revert Errors.PM_InvalidAddress();
@@ -494,9 +494,9 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
                 ++i;
             }
         }
-        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        (bool success, ) = payable(msg.sender).call{value: _amount}("");
         if (!success) revert Errors.PM_FailedTransfer();
-        emit Withdraw(msg.sender, amount);
+        emit Withdraw(msg.sender, _amount);
     }
     /**
      * @notice Rescue ERC-20 tokens mistakenly sent to this paymaster.
