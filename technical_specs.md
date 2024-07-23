@@ -18,7 +18,7 @@
 - User accounts who wants to manage gas sponsorship for their related accounts. 
 
 ## User Roles / Actors
-- Manager, Signers, Users, Zyfi Treasury Account
+- Manager, Signers, Users, Zyfi Dao Manager
 
 ### Manager
 1. Manager is the address managed by the Dapp/protcol or individual for gas sponsorship.
@@ -37,9 +37,10 @@
 ### Users 
 1. Users are the end-users that will receive a sponsored transaction from the Dapp to sign. They will be easily able to verify that the transaction does not require any gas payment from their side.
 
-### Zyfi Treasury
-1. Zyfi Treasury address to rescue any ERC-20 token (other than ETH) that mistakenly is sent to the paymaster address.
-2. To collect markup fee. This functionality is optional for Zyfi API only, Dapps are expected to set the markupPercent to 0 unless they want to donate.
+### Zyfi Dao Manager
+1. Zyfi DAO managed address to rescue any ERC-20 tokens (other than ETH) that are mistakenly sent to the paymaster address.
+2. Ability to update markup percent for all transaction as per decision by Zyfi Dao. Markup percent cannot be more than 100%. 
+3. Ability to withdraw the markup fee collected. 
 
 ### One-to-many relationship between signers and managers
 ![image](./img/image.png)
@@ -60,8 +61,7 @@ hash(
     _expirationTime,
     _maxNonce,
     _maxFeePerGas,
-    _gasLimit,
-    _markupPercent
+    _gasLimit
 ))
 ```
 #### _from :
@@ -85,10 +85,6 @@ hash(
 - Gas limit required by the transaction.
 - Paymaster cost 60K gas overhead. Hence, should be considered while setting gasLimit. 
 
-#### _markupPercent :
-- Optional markup charge on the total gas funds required(_gasLimit * _maxFeePerGas). For Zyfi Api use only.
-- Dapps should ensure it's set to 0, or else will be considered donation. 
-
 ## Refunds
 - ZKsync refunds the amount for the unused gas initially charged to the paymaster.
 - In this paymaster, refunds are managed through internal `updateRefund` function.
@@ -106,8 +102,8 @@ Paymaster approx gas overhead - 48K - 58K
 - Simple mint transaction : Transaction total gas : 390_107 | Gas used : 134_228
 > ![image](./img/gas-withoutPaymaster1.png)
 ---
-- With Paymaster overhead : Transaction total gas : 667_043 | Gas used : 182_490 (48k difference)
+- With Paymaster overhead : Transaction total gas : 667_043 | Gas used : 186_135 (52K difference)
 > ![image](./img/gas-paymaster-withoutMarkup.png)
 ---
-- With Paymaster overhead and markup : Transaction total gas : 466_751 | Gas used : 192_922 (58k difference)
+- With Paymaster overhead and markup : Transaction total gas : 466_751 | Gas used : 194_234 (60K difference)
 > ![image](./img/gas-paymaster-withMarkup.png)
