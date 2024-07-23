@@ -298,12 +298,11 @@ export async function getMessageHash(
   export function getInnerInputs(
     expiration: BigNumber | Number,
     maxNonce: BigNumber | Number,
-    markupPercent: BigNumber | Number,
     signerAddress: string,
     signature: string
   ){
     const innerInput = ethers.utils.arrayify(
-      abiCoder.encode(["uint256","uint256","uint256","address","bytes"], [expiration, maxNonce, markupPercent, signerAddress, signature]),
+      abiCoder.encode(["uint256","uint256","address","bytes"], [expiration, maxNonce, signerAddress, signature]),
     );
     return innerInput;
   }
@@ -314,7 +313,6 @@ export async function getMessageHash(
     maxNonce: BigNumber | Number,
     maxFeePerGas: BigNumber | Number,
     gasLimit: BigNumber | Number,
-    markupPercent: BigNumber | Number,
     signer: Wallet,
     paymaster: Contract
   ){
@@ -332,8 +330,7 @@ export async function getMessageHash(
         { name: "expirationTime", type: "uint256"},
         { name: "maxNonce", type: "uint256"},
         { name: "maxFeePerGas", type: "uint256"},
-        { name: "gasLimit", type: "uint256"},
-        { name: "markupPercent", type: "uint256"}
+        { name: "gasLimit", type: "uint256"}
       ]
     };
     const values = {
@@ -342,8 +339,7 @@ export async function getMessageHash(
       expirationTime,
       maxNonce,
       maxFeePerGas,
-      gasLimit,
-      markupPercent
+      gasLimit
     }
 
     return (await signer._signTypedData(domain, types, values));
@@ -366,8 +362,6 @@ export async function getMessageHash(
     usedNonce?: boolean;
     // If true, only estimate gas
     estimateGas?: boolean;
-    // If provided, add that markup markupPercent
-    markupPercent?: Number;
   };
 
   export async function executeERC20Transaction(
@@ -411,9 +405,9 @@ export async function getMessageHash(
   }
     let _markupPercent = BigNumber.from(0);
     
-    if(options?.markupPercent){
-      _markupPercent = BigNumber.from(options?.markupPercent);
-    }
+    //if(options?.markupPercent){
+    //  _markupPercent = BigNumber.from(options?.markupPercent);
+    //}
     let signature = await getEIP712Signature(
       user.address,
       to?.address,
@@ -421,7 +415,6 @@ export async function getMessageHash(
       maxNonce,
       gasPrice,
       BigNumber.from(GAS_LIMIT),
-      _markupPercent,
       _signer,
       paymaster   
     )
@@ -432,7 +425,7 @@ export async function getMessageHash(
     if(options?.wrongSigner){
       _signerAddress = Wallet.createRandom().address;
     }
-    const innerInput = getInnerInputs(expiration, maxNonce, _markupPercent, _signerAddress, signature);
+    const innerInput = getInnerInputs(expiration, maxNonce, _signerAddress, signature);
 
     let paymasterParams;
     if(options?.type){

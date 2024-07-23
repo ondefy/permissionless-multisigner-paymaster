@@ -25,7 +25,7 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const abiCoder = new ethers.utils.AbiCoder();
 
 describe("PermissionlessPaymaster", () => {
-    let zyfi_rescue_wallet: Wallet; // Rescue wallet maintained by Zyfi, Also the deployer
+    let zyfi_dao_manager: Wallet; // Rescue wallet maintained by Zyfi, Also the deployer
     let Manager1: Wallet; //  Manager with single signer
     let Manager2: Wallet; //  Manager with multple signers
     let Manager3: Wallet; //  Manager as signer itself
@@ -42,20 +42,20 @@ describe("PermissionlessPaymaster", () => {
     const deployPaymaster = async () => {
         paymaster = await deployContract(
             "PermissionlessPaymaster",
-            [zyfi_rescue_wallet.address],
+            [zyfi_dao_manager.address],
             {
                 silent: true,
                 noVerify: true,
                 proxy: false,
-                wallet: zyfi_rescue_wallet,
+                wallet: zyfi_dao_manager,
             }
         );
         return paymaster;
     };
     const getPaymasterParams = async (paymaster: Contract, from: Wallet, signer: Wallet) => {
         const gasPrice = await provider.getGasPrice();
-        const sig = await getEIP712Signature(from.address, paymaster.address, BigNumber.from(10000000000000), BigNumber.from(1000), gasPrice, BigNumber.from(10000000), BigNumber.from(0), signer, paymaster);
-        const innerInputs = getInnerInputs(BigNumber.from(10000000000000), BigNumber.from(1000), BigNumber.from(0), signer.address, sig);
+        const sig = await getEIP712Signature(from.address, paymaster.address, BigNumber.from(10000000000000), BigNumber.from(1000), gasPrice, BigNumber.from(10000000), signer, paymaster);
+        const innerInputs = getInnerInputs(BigNumber.from(10000000000000), BigNumber.from(1000), signer.address, sig);
         const paymasterParams = utils.getPaymasterParams(
             paymaster.address.toString(),
             {
@@ -69,7 +69,7 @@ describe("PermissionlessPaymaster", () => {
     const initializeWallets = () => {
         if (hre.network.name == "zkSyncTestnet") {
             // This means we will need private keys from dotenv -
-            zyfi_rescue_wallet = getWallet(process.env.ZYFI_RESCUE_WALLETS);
+            zyfi_dao_manager = getWallet(process.env.zyfi_dao_managerS);
             Manager1 = getWallet(process.env.MANAGER1);
             Manager2 = getWallet(process.env.MANAGER2);
             Manager3 = getWallet(process.env.MANAGER3);
@@ -79,7 +79,7 @@ describe("PermissionlessPaymaster", () => {
             user1 = getWallet(process.env.USER1);
             user2 = getWallet(process.env.USER2);
         } else {
-            zyfi_rescue_wallet = getWallet(LOCAL_RICH_WALLETS[0].privateKey);
+            zyfi_dao_manager = getWallet(LOCAL_RICH_WALLETS[0].privateKey);
             Manager1 = getWallet(LOCAL_RICH_WALLETS[1].privateKey);
             Manager2 = getWallet(LOCAL_RICH_WALLETS[2].privateKey);
             Manager3 = getWallet(LOCAL_RICH_WALLETS[3].privateKey);
@@ -100,7 +100,7 @@ describe("PermissionlessPaymaster", () => {
             silent: true,
             noVerify: true,
             proxy: false,
-            wallet: zyfi_rescue_wallet,
+            wallet: zyfi_dao_manager,
         });
     });
 
@@ -169,7 +169,7 @@ describe("PermissionlessPaymaster", () => {
         it("should deposit on behalf", async () => {
             const balanceBefore = await paymaster.managerBalances(Manager3.address);
             await paymaster
-                .connect(zyfi_rescue_wallet)
+                .connect(zyfi_dao_manager)
                 .depositOnBehalf(Manager3.address, {
                     value: ethers.utils.parseEther("0.1"),
                 });
@@ -179,7 +179,7 @@ describe("PermissionlessPaymaster", () => {
             );
             await expect(
                 paymaster
-                    .connect(zyfi_rescue_wallet)
+                    .connect(zyfi_dao_manager)
                     .depositOnBehalf(ZERO_ADDRESS, {
                         value: ethers.utils.parseEther("0.1"),
                     })
@@ -504,8 +504,8 @@ describe("PermissionlessPaymaster", () => {
         });
 
         it("should not allow signers that are not registered", async () => {
-            // zyfi_rescue_wallet is not registered
-            await expect(executeERC20Transaction(erc20, paymaster, user1, zyfi_rescue_wallet)).to.be.rejectedWith("0x81c0c5d4");
+            // zyfi_dao_manager is not registered
+            await expect(executeERC20Transaction(erc20, paymaster, user1, zyfi_dao_manager)).to.be.rejectedWith("0x81c0c5d4");
         });
 
         it("should not allow to proceed with insufficient manager balance", async () => {
@@ -540,43 +540,49 @@ describe("PermissionlessPaymaster", () => {
     });
 
     //// -----------------------------------------------
-    //// Markup cost and Zyfi treasury balance test
+    //// Markup cost and Zyfi dao balance test
     //// -----------------------------------------------
 
-    describe("Paymaster markup cost test", async () => {
+    describe("Paymaster markup charge test", async () => {
+        it("should only allow Dao manager to update markup percent", async () => {
+            const prevMarkupPercent = await paymaster.markupPercent();
+            await expect(paymaster.connect(Manager1).updateMarkupPercent(100)).to.be.rejectedWith("0x5001df4c");
+            await expect(paymaster.connect(zyfi_dao_manager).updateMarkupPercent(100000)).to.be.rejectedWith("0x5001df4c");
+            await expect(paymaster.connect(zyfi_dao_manager).updateMarkupPercent(1000)).not.to.be.rejected;
+            expect(await paymaster.markupPercent()).not.to.be.equal(prevMarkupPercent);
+            expect(await paymaster.markupPercent()).to.be.equal(1000);
+        });
         it("should deduct markup cost correctly with view function test", async () => {
-            const treasuryAddress = await paymaster.zyfi_treasury();
-            const treasuryBalance = await paymaster.managerBalances(treasuryAddress);
+            const daoAddress = await paymaster.zyfi_dao_manager();
+            const markupPercent = await paymaster.markupPercent()
+            const daoBalance = await paymaster.managerBalances(daoAddress);
             let tx = await executeERC20Transaction(
                 erc20,
                 paymaster,
                 user1,
-                signer1,
-                {
-                    markupPercent: 5000 // 50%
-                }
+                signer1
             );
             let eventData = tx.events.at(0).data;
             let eventDataDecoded = abiCoder.decode(["uint256","uint256"],eventData);
             let txCost = eventDataDecoded[0];
             const markUpCost1 = eventDataDecoded[1];  
-            expect(await paymaster.managerBalances(treasuryAddress)).to.be.eq(treasuryBalance.add(markUpCost1));
-            expect(markUpCost1).to.be.equal(txCost.mul(5000).div(10000));
+            expect(await paymaster.managerBalances(daoAddress)).to.be.eq(daoBalance.add(markUpCost1));
+            expect(markUpCost1).to.be.equal(txCost.mul(markupPercent).div(10000));
+            // Changing markupPercent
+            await paymaster.connect(zyfi_dao_manager).updateMarkupPercent(5000);
+            const newMarkupPercent = await paymaster.markupPercent();
             tx = await executeERC20Transaction(
                 erc20,
                 paymaster,
                 user1,
-                signer1,
-                {
-                    markupPercent: 7500 // 75%
-                }
+                signer1
             );
             eventData = tx.events.at(0).data;
             eventDataDecoded = abiCoder.decode(["uint256","uint256"],eventData);
             txCost = eventDataDecoded[0];
             const markUpCost2 = eventDataDecoded[1]; 
-            expect(await paymaster.managerBalances(treasuryAddress)).to.be.eq(treasuryBalance.add(markUpCost1).add(markUpCost2));
-            expect(markUpCost2).to.be.eq(txCost.mul(7500).div(10000));
+            expect(await paymaster.managerBalances(daoAddress)).to.be.eq(daoBalance.add(markUpCost1).add(markUpCost2));
+            expect(markUpCost2).to.be.eq(txCost.mul(newMarkupPercent).div(10000));
             
             // View functions test 
             const previousTotalBalance = await paymaster.previousTotalBalance();
@@ -588,43 +594,43 @@ describe("PermissionlessPaymaster", () => {
 
         });
         it("should not deduct markup more than 100%", async() => {
-            const treasuryAddress = await paymaster.zyfi_treasury();
-            const treasuryBalance = await paymaster.managerBalances(treasuryAddress);
+            const daoAddress = await paymaster.zyfi_dao_manager();
+            const daoBalance = await paymaster.managerBalances(daoAddress);
+            await expect(paymaster.connect(zyfi_dao_manager).updateMarkupPercent(100000)).to.be.rejectedWith("0x5001df4c");
+            await paymaster.connect(zyfi_dao_manager).updateMarkupPercent(10000);
+            const markupPercent = await paymaster.markupPercent();
             const tx = await executeERC20Transaction(
                 erc20,
                 paymaster,
                 user1,
-                signer1,
-                {
-                    markupPercent: 150000 // 1500%
-                }
+                signer1
             );
             const eventData = tx.events.at(0).data;
             const eventDataDecoded = abiCoder.decode(["uint256","uint256"],eventData);
             const txCost = eventDataDecoded[0];
             const markUpCost = eventDataDecoded[1];  
-            expect(await paymaster.managerBalances(treasuryAddress)).to.be.eq(treasuryBalance.add(markUpCost));
+            expect(await paymaster.managerBalances(daoAddress)).to.be.eq(daoBalance.add(markUpCost));
             expect(markUpCost).to.be.equal(txCost);
         });
-        it("should update balance correctly while changing Zyfi Treasury address ", async () => {
-            const treasuryAddress = await paymaster.zyfi_treasury();
-            const treasuryBalance = await paymaster.managerBalances(treasuryAddress);
-            // Should not multiply if treasuryAddress is changed to same address
-            await expect(paymaster.connect(zyfi_rescue_wallet).updateTreasuryAddress(zyfi_rescue_wallet.address)).not.to.be.rejected;
-            expect(await paymaster.managerBalances(treasuryAddress)).to.be.equal(treasuryBalance);
+        it("should update balance correctly while changing Zyfi Dao address ", async () => {
+            const daoAddress = await paymaster.zyfi_dao_manager();
+            const daoBalance = await paymaster.managerBalances(daoAddress);
+            // Should not multiply if daoAddress is changed to same address
+            await expect(paymaster.connect(zyfi_dao_manager).updateDaoManager(zyfi_dao_manager.address)).not.to.be.rejected;
+            expect(await paymaster.managerBalances(daoAddress)).to.be.equal(daoBalance);
             const signerBalance = await paymaster.managerBalances(signer3.address);
-            await expect(paymaster.connect(zyfi_rescue_wallet).updateTreasuryAddress(signer3.address)).not.to.be.rejected;
-            expect(await paymaster.managerBalances(signer3.address)).to.be.equal(treasuryBalance);
-            await expect(paymaster.connect(zyfi_rescue_wallet).updateTreasuryAddress(zyfi_rescue_wallet.address)).to.be.rejectedWith("0x5001df4c");
-            expect(await paymaster.managerBalances(zyfi_rescue_wallet.address)).to.be.equal(0);
-            await expect(paymaster.connect(signer3).updateTreasuryAddress(zyfi_rescue_wallet.address)).not.to.be.rejected;
-            expect(await paymaster.managerBalances(zyfi_rescue_wallet.address)).to.be.equal(treasuryBalance);
+            await expect(paymaster.connect(zyfi_dao_manager).updateDaoManager(signer3.address)).not.to.be.rejected;
+            expect(await paymaster.managerBalances(signer3.address)).to.be.equal(daoBalance);
+            await expect(paymaster.connect(zyfi_dao_manager).updateDaoManager(zyfi_dao_manager.address)).to.be.rejectedWith("0x5001df4c");
+            expect(await paymaster.managerBalances(zyfi_dao_manager.address)).to.be.equal(0);
+            await expect(paymaster.connect(signer3).updateDaoManager(zyfi_dao_manager.address)).not.to.be.rejected;
+            expect(await paymaster.managerBalances(zyfi_dao_manager.address)).to.be.equal(daoBalance);
             expect(await paymaster.managerBalances(signer3.address)).to.be.equal(0);
             const paymasterBalance = await provider.getBalance(paymaster.address);
-            const tx = await(await paymaster.connect(zyfi_rescue_wallet).withdrawFull()).wait();
+            const tx = await(await paymaster.connect(zyfi_dao_manager).withdrawFull()).wait();
             const withdrawAmount = BigNumber.from(tx.events.at(-2).data);
-            expect(withdrawAmount).to.be.eq(treasuryBalance);
-            expect(await provider.getBalance(paymaster.address)).to.be.eq(paymasterBalance.sub(treasuryBalance));
+            expect(withdrawAmount).to.be.eq(daoBalance);
+            expect(await provider.getBalance(paymaster.address)).to.be.eq(paymasterBalance.sub(daoBalance));
         });
     });
     
@@ -757,35 +763,35 @@ describe("PermissionlessPaymaster", () => {
     });
 
     //// -----------------------------------------------
-    //// Rescue Wallet/ Zyfi treasury update Test 
+    //// Rescue Wallet/ Zyfi dao update Test 
     //// -----------------------------------------------    
 
     describe("Rescue Token tests", async () => {
         it("initial parameters are correctly set", async () => {
-            expect(await paymaster.zyfi_treasury()).to.be.equal(
-                zyfi_rescue_wallet.address
+            expect(await paymaster.zyfi_dao_manager()).to.be.equal(
+                zyfi_dao_manager.address
             );
         });
         it("rescue wallet update test", async () => {
             await expect(
-                paymaster.connect(Manager1).updateTreasuryAddress(Manager1.address)
+                paymaster.connect(Manager1).updateDaoManager(Manager1.address)
             ).to.be.rejectedWith("0x5001df4c");
             await paymaster
-                .connect(zyfi_rescue_wallet)
-                .updateTreasuryAddress(Manager2.address);
-            expect(await paymaster.zyfi_treasury()).to.be.equal(
+                .connect(zyfi_dao_manager)
+                .updateDaoManager(Manager2.address);
+            expect(await paymaster.zyfi_dao_manager()).to.be.equal(
                 Manager2.address
             );
-            await expect(paymaster.connect(zyfi_rescue_wallet).updateTreasuryAddress(zyfi_rescue_wallet.address)).to.be.rejected;
-            //await paymaster.connect(Manager2).updateTreasuryAddress(zyfi_rescue_wallet.address);
+            await expect(paymaster.connect(zyfi_dao_manager).updateDaoManager(zyfi_dao_manager.address)).to.be.rejected;
+            //await paymaster.connect(Manager2).updateDaoManager(zyfi_dao_manager.address);
         });
         it("should rescue dropped token", async () => {
-            await erc20.connect(zyfi_rescue_wallet).transfer(paymaster.address, 5);
+            await erc20.connect(zyfi_dao_manager).transfer(paymaster.address, 5);
             expect(await erc20.balanceOf(paymaster.address)).to.be.equal(5);
             await expect(paymaster.connect(Manager2).rescueTokens([erc20.address, ZERO_ADDRESS])).to.be.rejectedWith("0x02876945");
             await expect(paymaster.connect(Manager2).rescueTokens([erc20.address, Manager1.address])).to.be.rejected;
             await expect(paymaster.connect(Manager2).rescueTokens([erc20.address])).not.to.be.rejected;
-            expect(await erc20.balanceOf(await paymaster.zyfi_treasury())).to.be.equal(5);
+            expect(await erc20.balanceOf(await paymaster.zyfi_dao_manager())).to.be.equal(5);
         });
     });
 
