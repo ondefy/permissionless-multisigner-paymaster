@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { BigNumber, ethers } from "ethers";
+import { BigNumber, ethers, BigNumberish } from "ethers";
 import { Contract, Wallet, utils, Provider } from "zksync-ethers";
 import * as hre from "hardhat";
 
@@ -217,7 +217,7 @@ describe("PermissionlessPaymaster", () => {
             previousPaymasterBalance = await provider.getBalance(paymaster.address);
             let balanceBeforeM1 = await paymaster.managerBalances(Manager1.address);
             tx = await executeERC20Transaction(erc20, paymaster, user1, signer1);
-            eventData = abiCoder.decode(["uint256","uint256"],(tx.events.at(0).data));
+            eventData = abiCoder.decode(["uint256", "uint256"], (tx.events.at(0).data));
             txCost = eventData[0].add(eventData[1]);
             const refund1 = BigNumber.from(tx.events.at(-1).data);
             currentPaymasterBalance = await provider.getBalance(paymaster.address)
@@ -233,7 +233,7 @@ describe("PermissionlessPaymaster", () => {
             let balanceBeforeM2 = await paymaster.managerBalances(Manager2.address);
             previousPaymasterBalance = currentPaymasterBalance;
             tx = await executeERC20Transaction(erc20, paymaster, user1, signer2);
-            eventData = abiCoder.decode(["uint256","uint256"],(tx.events.at(0).data));
+            eventData = abiCoder.decode(["uint256", "uint256"], (tx.events.at(0).data));
             txCost = eventData[0].add(eventData[1]);
             const refund2 = BigNumber.from(tx.events.at(-1).data);
             currentPaymasterBalance = await provider.getBalance(paymaster.address);
@@ -265,7 +265,7 @@ describe("PermissionlessPaymaster", () => {
             balanceBeforeM2 = await paymaster.managerBalances(Manager2.address);
             balanceBeforeM3 = await paymaster.managerBalances(Manager3.address);
             tx = await executeERC20Transaction(erc20, paymaster, user1, Manager3);
-            eventData = abiCoder.decode(["uint256","uint256"],(tx.events.at(0).data));
+            eventData = abiCoder.decode(["uint256", "uint256"], (tx.events.at(0).data));
             txCost = eventData[0].add(eventData[1]);
             const refund3 = BigNumber.from(tx.events.at(-1).data);
             currentPaymasterBalance = await provider.getBalance(paymaster.address);
@@ -298,7 +298,7 @@ describe("PermissionlessPaymaster", () => {
 
             // Paymaster call 
             tx = await executeERC20Transaction(erc20, paymaster, user1, signer1);
-            eventData = abiCoder.decode(["uint256","uint256"],(tx.events.at(0).data));
+            eventData = abiCoder.decode(["uint256", "uint256"], (tx.events.at(0).data));
             txCost = eventData[0].add(eventData[1]);
             const refund1 = BigNumber.from(tx.events.at(-1).data);
             previousTotalBalance = await paymaster.previousTotalBalance();
@@ -320,7 +320,7 @@ describe("PermissionlessPaymaster", () => {
                 }
             })).wait();
 
-            eventData = abiCoder.decode(["uint256","uint256"],(tx.events.at(0).data));
+            eventData = abiCoder.decode(["uint256", "uint256"], (tx.events.at(0).data));
             txCost = eventData[0].add(eventData[1]);
             const refund2 = BigNumber.from(tx.events.at(-1).data);
             currentPaymasterBalance = await provider.getBalance(paymaster.address);
@@ -344,7 +344,7 @@ describe("PermissionlessPaymaster", () => {
                     gasPerPubdata: utils.DEFAULT_GAS_PER_PUBDATA_LIMIT,
                 }
             })).wait();
-            eventData = abiCoder.decode(["uint256","uint256"],(tx.events.at(0).data));
+            eventData = abiCoder.decode(["uint256", "uint256"], (tx.events.at(0).data));
             txCost = eventData[0].add(eventData[1]);
             const refund3 = BigNumber.from(tx.events.at(-1).data);
             currentPaymasterBalance = await provider.getBalance(paymaster.address);
@@ -540,10 +540,72 @@ describe("PermissionlessPaymaster", () => {
     });
 
     //// -----------------------------------------------
+    //// Donation to previous manager test
+    //// -----------------------------------------------
+
+    describe("Donation test", async () => {
+        it("should allow donation and increase funds of previous manager", async () => {
+            let tx = await executeERC20Transaction(
+                erc20,
+                paymaster,
+                user1,
+                signer1
+            );
+            const previousManager = await paymaster.previousManager();
+            expect(previousManager).to.be.equal(Manager1.address);
+            const previousManagerBalanceBefore = await paymaster.getLatestManagerBalance(previousManager);
+            await expect(paymaster.connect(zyfi_dao_manager).donateToPreviousManager({ value: ethers.utils.parseEther("1") })).not.to.be.rejected;
+            expect(await paymaster.getLatestManagerBalance(previousManager)).to.be.eq(previousManagerBalanceBefore.add(ethers.utils.parseEther("1")));
+            const tx2 = await (await paymaster.connect(Manager1).withdrawFull()).wait();
+            const withdrawn = BigNumber.from(tx2.events.at(-2).data);
+            expect(withdrawn).to.be.eq((previousManagerBalanceBefore).add(ethers.utils.parseEther("1")));
+            // Reset the balance
+            await paymaster.connect(Manager1).deposit({ value: previousManagerBalanceBefore });
+        });
+    });
+
+    //// -----------------------------------------------
+    //// Paymaster state update on failed transaction test
+    //// -----------------------------------------------
+
+    describe("Paymaster state update test in case of failed transactions", async () => {
+        it("should update state in case of failed transaction", async () => {
+            const gasPrice = await provider.getGasPrice();
+            const sig = await getEIP712Signature(user1.address, erc20.address, BigNumber.from(10000000000000), BigNumber.from(1000), gasPrice, BigNumber.from(10000000), signer2, paymaster);
+            const innerInputs = getInnerInputs(BigNumber.from(10000000000000), BigNumber.from(1000), signer2.address, sig);
+            const paymasterParams = utils.getPaymasterParams(
+                paymaster.address.toString(),
+                {
+                    type: "General",
+                    innerInput: innerInputs
+                }
+            );
+            const paymasterBalanceBefore = await provider.getBalance(paymaster.address);
+            // As signer2 is used
+            const manager2BalanceBefore = await paymaster.getLatestManagerBalance(Manager2.address);
+            const lastPreviousManager = await paymaster.previousManager();
+            let failedTx = await user1.sendTransaction({
+                to: erc20.address,
+                data: "0xa9059cbb000000000000000000000000497e3ad1b769bc6f46e90f2b87692a2f3f40cf400000000000000000000000000000000000000000000000008ac7230489e80000",
+                gasLimit: BigNumber.from(10000000),
+                gasPrice: gasPrice,
+                customData: {
+                    paymasterParams,
+                    gasPerPubdata: utils.DEFAULT_GAS_PER_PUBDATA_LIMIT
+                }
+            });
+            expect(await provider.getBalance(paymaster.address)).not.to.be.eq(paymasterBalanceBefore);
+            expect((await paymaster.getLatestManagerBalance(Manager2.address)).sub(manager2BalanceBefore).toNumber()).to.be.lt(0);
+            expect(await paymaster.previousManager()).to.be.eq(Manager2.address);
+            expect(await paymaster.previousManager()).not.be.eq(lastPreviousManager);
+        });
+    });
+
+    //// -----------------------------------------------
     //// Markup cost and Zyfi dao balance test
     //// -----------------------------------------------
 
-    describe("Paymaster markup charge test", async () => {
+    describe("Paymaster markup fee test", async () => {
         it("should only allow Dao manager to update markup percent", async () => {
             const prevMarkupPercent = await paymaster.markupPercent();
             await expect(paymaster.connect(Manager1).updateMarkupPercent(100)).to.be.rejectedWith("0x5001df4c");
@@ -563,9 +625,9 @@ describe("PermissionlessPaymaster", () => {
                 signer1
             );
             let eventData = tx.events.at(0).data;
-            let eventDataDecoded = abiCoder.decode(["uint256","uint256"],eventData);
+            let eventDataDecoded = abiCoder.decode(["uint256", "uint256"], eventData);
             let txCost = eventDataDecoded[0];
-            const markUpCost1 = eventDataDecoded[1];  
+            const markUpCost1 = eventDataDecoded[1];
             expect(await paymaster.managerBalances(daoAddress)).to.be.eq(daoBalance.add(markUpCost1));
             expect(markUpCost1).to.be.equal(txCost.mul(markupPercent).div(10000));
             // Changing markupPercent
@@ -578,12 +640,12 @@ describe("PermissionlessPaymaster", () => {
                 signer1
             );
             eventData = tx.events.at(0).data;
-            eventDataDecoded = abiCoder.decode(["uint256","uint256"],eventData);
+            eventDataDecoded = abiCoder.decode(["uint256", "uint256"], eventData);
             txCost = eventDataDecoded[0];
-            const markUpCost2 = eventDataDecoded[1]; 
+            const markUpCost2 = eventDataDecoded[1];
             expect(await paymaster.managerBalances(daoAddress)).to.be.eq(daoBalance.add(markUpCost1).add(markUpCost2));
             expect(markUpCost2).to.be.eq(txCost.mul(newMarkupPercent).div(10000));
-            
+
             // View functions test 
             const previousTotalBalance = await paymaster.previousTotalBalance();
             const currentBalance = await provider.getBalance(paymaster.address);
@@ -593,7 +655,7 @@ describe("PermissionlessPaymaster", () => {
             expect(await paymaster.getLatestManagerBalanceViaSigner(signer1.address)).to.be.eq(manager1Balance.add(refund));
 
         });
-        it("should not deduct markup more than 100%", async() => {
+        it("should not deduct markup more than 100%", async () => {
             const daoAddress = await paymaster.zyfi_dao_manager();
             const daoBalance = await paymaster.managerBalances(daoAddress);
             await expect(paymaster.connect(zyfi_dao_manager).updateMarkupPercent(100000)).to.be.rejectedWith("0x5001df4c");
@@ -606,9 +668,9 @@ describe("PermissionlessPaymaster", () => {
                 signer1
             );
             const eventData = tx.events.at(0).data;
-            const eventDataDecoded = abiCoder.decode(["uint256","uint256"],eventData);
+            const eventDataDecoded = abiCoder.decode(["uint256", "uint256"], eventData);
             const txCost = eventDataDecoded[0];
-            const markUpCost = eventDataDecoded[1];  
+            const markUpCost = eventDataDecoded[1];
             expect(await paymaster.managerBalances(daoAddress)).to.be.eq(daoBalance.add(markUpCost));
             expect(markUpCost).to.be.equal(txCost);
         });
@@ -627,15 +689,15 @@ describe("PermissionlessPaymaster", () => {
             expect(await paymaster.managerBalances(zyfi_dao_manager.address)).to.be.equal(daoBalance);
             expect(await paymaster.managerBalances(signer3.address)).to.be.equal(0);
             const paymasterBalance = await provider.getBalance(paymaster.address);
-            const tx = await(await paymaster.connect(zyfi_dao_manager).withdrawFull()).wait();
+            const tx = await (await paymaster.connect(zyfi_dao_manager).withdrawFull()).wait();
             const withdrawAmount = BigNumber.from(tx.events.at(-2).data);
             expect(withdrawAmount).to.be.eq(daoBalance);
             expect(await provider.getBalance(paymaster.address)).to.be.eq(paymasterBalance.sub(daoBalance));
         });
     });
-    
+
     //// -----------------------------------------------
-    //// Add / Remove Signers Functionality Test
+    //// Manager Functionality Test
     //// -----------------------------------------------
 
     describe("Manager functionalities test", async () => {
@@ -798,11 +860,11 @@ describe("PermissionlessPaymaster", () => {
     //// -----------------------------------------------
     //// Post audit -  fix test
     //// -----------------------------------------------
-    
+
     describe("Post audit fix test", async () => {
         it("self revoke should not update previousManager", async () => {
             // Setup
-            await paymaster.connect(Manager2).depositAndAddSigner(signer2.address,{
+            await paymaster.connect(Manager2).depositAndAddSigner(signer2.address, {
                 value: ethers.utils.parseEther("0.1")
             });
             await executeERC20Transaction(erc20, paymaster, user1, signer2);
