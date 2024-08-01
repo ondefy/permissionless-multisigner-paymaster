@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 dotenv.config();
 // Address of the contract to interact with
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-const CONTRACT_ADDRESS = "0x2cc36D81E271B9869F6F786C804Cf6b052594F4f";
+const CONTRACT_ADDRESS = "";
 const ERC20_ADDRESS = "0xe1134444211593Cfda9fc9eCc7B43208615556E2" // UNI ADDRESS ON SEPOLIA
 if (!CONTRACT_ADDRESS) throw "⛔️ Provide address of the contract to interact with!";
 
