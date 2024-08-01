@@ -123,12 +123,11 @@ export const deployContract = async (contractArtifactName: string, constructorAr
 export function getInnerInputs(
   expiration: BigNumber | Number,
   maxNonce: BigNumber | Number,
-  markupPercent: BigNumber | Number,
   signerAddress: string,
   signature: string
 ){
   const innerInput = ethers.utils.arrayify(
-    abiCoder.encode(["uint256", "uint256", "uint256", "address", "bytes"], [expiration, maxNonce, markupPercent, signerAddress, signature]),
+    abiCoder.encode(["uint256", "uint256", "address", "bytes"], [expiration, maxNonce, signerAddress, signature]),
   );
   return innerInput;
 }
@@ -139,7 +138,6 @@ export async function getEIP712Signature(
   maxNonce: BigNumber | Number,
   maxFeePerGas: BigNumber | Number,
   gasLimit: BigNumber | Number,
-  markupPercent: BigNumber | Number,
   signer: Wallet,
   paymaster: Contract
 ){
@@ -157,8 +155,7 @@ export async function getEIP712Signature(
       { name: "expirationTime", type: "uint256"},
       { name: "maxNonce", type: "uint256"},
       { name: "maxFeePerGas", type: "uint256"},
-      { name: "gasLimit", type: "uint256"},
-      { name: "markupPercent", type: "uint256"}
+      { name: "gasLimit", type: "uint256"}
     ]
   };
   const values = {
@@ -167,8 +164,7 @@ export async function getEIP712Signature(
     expirationTime,
     maxNonce,
     maxFeePerGas,
-    gasLimit,
-    markupPercent
+    gasLimit
   }
 
   return (await signer._signTypedData(domain, types, values));
@@ -180,10 +176,9 @@ export const createPaymasterParams = async (paymaster: Contract, from: Wallet, t
   const gasLimit = BigNumber.from(10_000_000);
   const maxNonce = (await provider.getTransactionCount(from.address))+5;
   const expiration = ((await provider.getBlock("latest")).timestamp)+120;
-  const markupPercent = BigNumber.from(0);
   // Signer signs the required data
-  const sig = await getEIP712Signature(from.address, to.address, BigNumber.from(expiration), BigNumber.from(maxNonce), gasPrice, gasLimit, markupPercent, signer, paymaster);
-  const innerInputs = getInnerInputs(BigNumber.from(expiration),BigNumber.from(maxNonce),markupPercent, signer.address, sig);
+  const sig = await getEIP712Signature(from.address, to.address, BigNumber.from(expiration), BigNumber.from(maxNonce), gasPrice, gasLimit, signer, paymaster);
+  const innerInputs = getInnerInputs(BigNumber.from(expiration),BigNumber.from(maxNonce), signer.address, sig);
   const paymasterParams = utils.getPaymasterParams(
       paymaster.address.toString(),
       {
