@@ -39,7 +39,7 @@
 
 ### Zyfi Dao Manager
 1. Zyfi DAO managed address to rescue any ERC-20 tokens (other than ETH) that are mistakenly sent to the paymaster address.
-2. Ability to update markup percent for all transaction as per decision by Zyfi Dao. Markup percent cannot be more than 100%. 
+2. Ability to update markup percent for all transaction as per decision by Zyfi Dao. Markup percent cannot be more than 100%. Markup is charged on the required ETH to be sent to the bootloader and deducted from manager's balance.
 3. Ability to withdraw the markup fee collected. 
 
 ### One-to-many relationship between signers and managers
@@ -97,13 +97,13 @@ hash(
 
 ## Gas 
 
-Paymaster approx gas overhead - 48K - 58K
+Paymaster approx gas overhead - 51K - 60K
 
 - Simple mint transaction : Transaction total gas : 390_107 | Gas used : 134_228
 > ![image](./img/gas-withoutPaymaster1.png)
 ---
-- With Paymaster overhead : Transaction total gas : 667_043 | Gas used : 186_135 (52K difference)
+- With Paymaster overhead : Transaction total gas : 667_043 | Gas used : 184_813 (~51K difference)
 > ![image](./img/gas-paymaster-withoutMarkup.png)
 ---
-- With Paymaster overhead and markup : Transaction total gas : 466_751 | Gas used : 194_234 (60K difference)
+- With Paymaster overhead and markup : Transaction total gas : 466_751 | Gas used : 192_906 (~59K difference)
 > ![image](./img/gas-paymaster-withMarkup.png)
