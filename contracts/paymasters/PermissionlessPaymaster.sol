@@ -162,9 +162,6 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
         onlyBootloader
         returns (bytes4 magic, bytes memory context)
     {
-        // Update refund first.
-        // Since amount = 0, isWithdrawal true/false doesn't matter except true saves a bit gas.
-        updateRefund(0, true);
         // By default we consider the transaction as accepted.
         magic = PAYMASTER_VALIDATION_SUCCESS_MAGIC;
         // Revert if standard paymaster input is shorter than 4 bytes
@@ -226,6 +223,9 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
             uint256 requiredETH = _transaction.gasLimit *
                 _transaction.maxFeePerGas;
             uint256 totalDeductETH = requiredETH;
+            // update refund for previousManager with the requiredETH to be sent to bootloader
+            // This updates previousTotalBalance directly
+            updateRefund(requiredETH, true);
             // Only move forward if markupPercent > 0, saves SSTORE, SLOAD calls.
             if (markupPercent > 0) {
                 /// @dev Percent denominator is 100_00 instead of 100. So, for 10% = 1000 markupPercent, for 33.33% = 3333 markupPercent, for 0.01% = 1 markupPercent
@@ -246,8 +246,6 @@ contract PermissionlessPaymaster is IPaymaster, EIP712 {
             managerBalances[_manager] = _balance - totalDeductETH;
             // Track manager for refund in the NEXT transaction
             previousManager = _manager;
-            // Track balance before refund is added
-            previousTotalBalance = address(this).balance - requiredETH;
             // emit sponsor event to keep track off-chain
             emit Sponsor(
                 _manager,
