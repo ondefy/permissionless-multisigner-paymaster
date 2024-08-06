@@ -31,8 +31,8 @@ This signature based implementation allows the following features:
 ### Contract address
 Network | Address
 | --- | --- |
-| ZKsync Mainnet | 0xF8dc9e1a5C6cdC9aBC0FbF2F7E08Fd40606cFdB8 |
-| ZKsync Sepolia Testnet | 0xF8dc9e1a5C6cdC9aBC0FbF2F7E08Fd40606cFdB8 |
+| ZKsync Mainnet | 0x68b4F1146a863d0E7cF1e134857411C8a941C86d |
+| ZKsync Sepolia Testnet | 0xc1B0E2edC4cCaB51A764D7Dd8121CBf58C4D9E40 |
 
 ## Project structure
 
