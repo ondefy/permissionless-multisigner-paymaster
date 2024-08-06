@@ -21,7 +21,7 @@
 //                                                     @@@@
 //                                                    @@%@
 
-pragma solidity ^0.8.19;
+pragma solidity 0.8.19;
 
 import {IPaymaster, ExecutionResult, PAYMASTER_VALIDATION_SUCCESS_MAGIC} from "@matterlabs/zksync-contracts/l2/system-contracts/interfaces/IPaymaster.sol";
 import {IPaymasterFlow} from "@matterlabs/zksync-contracts/l2/system-contracts/interfaces/IPaymasterFlow.sol";
